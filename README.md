@@ -45,7 +45,14 @@ açık/fazla tutarını hesaplar ve kaydeder.
 Supabase panelinde **SQL Editor**’ü aç ve sırayla çalıştır:
 
 1. `supabase/migrations/0001_init.sql` — tablolar, fonksiyonlar, RLS politikaları
-2. `supabase/seed.sql` — 3 örnek stand ve 5 kahve çeşidi (isteğe bağlı, sonra elle de eklenebilir)
+2. Sonra ikisinden **birini** seç:
+   - `supabase/seed.sql` — boş başlangıç: 3 stand ve 5 kahve çeşidi, başka veri yok
+   - `supabase/demo_data.sql` — **deneme verisi**: son 21 günün stok sayımları,
+     ciroları, vardiya planları, para hareketleri ve kasa sayımları. Uygulamayı
+     dolu görmek için bunu kullan. Tarihler `current_date`'e göre üretildiği için
+     "bugün" ve "yarın" ekranları hep dolu gelir.
+
+Deneme verisini sonradan silmek için: `supabase/demo_data_temizle.sql`
 
 ### 2. Kullanıcılar
 
