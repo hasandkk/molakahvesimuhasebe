@@ -6,10 +6,11 @@ import { SHIFT_PRESETS, type Employee, type ShiftAssignment, type Stand } from '
 import { Button, Card, DateNav, Empty, ErrorBox, Select, Spinner, Tabs } from '../components/ui'
 
 type Data = { stands: Stand[]; employees: Employee[]; assignments: ShiftAssignment[] }
-type PresetId = (typeof SHIFT_PRESETS)[number]['id'] | 'ozel'
+type PresetId = (typeof SHIFT_PRESETS)[number]['id'] | 'ozel' | 'egitim'
+type Times = { start: string; end: string }
 
-/** Postgres "08:00:00" -> "08:00" */
-const hhmm = (time: string) => time.slice(0, 5)
+/** Postgres "08:00:00" -> "08:00"; eğitim kayıtlarında saat boş olabilir. */
+const hhmm = (time: string | null) => (time ? time.slice(0, 5) : '')
 
 async function load(date: string): Promise<Data> {
   const [stands, employees, assignments] = await Promise.all([
@@ -33,24 +34,25 @@ export default function Shifts() {
   const [actionError, setActionError] = useState<string | null>(null)
   const { data, loading, error, reload } = useQuery(() => load(date), [date])
 
-  // Eklenecek vardiyanın saatleri
+  // Eklenecek kaydın türü ve saatleri
   const [preset, setPreset] = useState<PresetId>('sabah')
   const [customStart, setCustomStart] = useState('08:00')
   const [customEnd, setCustomEnd] = useState('15:30')
 
   // Satır bazında düzenlenen saatler; sunucuya yazılırken ekran titremesin diye
   // yerel olarak da tutuluyor.
-  const [timeEdits, setTimeEdits] = useState<Record<string, { start: string; end: string }>>({})
+  const [timeEdits, setTimeEdits] = useState<Record<string, Times>>({})
   useEffect(() => setTimeEdits({}), [date])
 
-  const newShift = useMemo(() => {
-    if (preset === 'ozel') return { start: customStart, end: customEnd }
+  const newEntry = useMemo(() => {
+    if (preset === 'egitim') return { kind: 'egitim' as const, start: null, end: null }
+    if (preset === 'ozel') return { kind: 'vardiya' as const, start: customStart, end: customEnd }
     const found = SHIFT_PRESETS.find((p) => p.id === preset)!
-    return { start: found.start, end: found.end }
+    return { kind: 'vardiya' as const, start: found.start, end: found.end }
   }, [preset, customStart, customEnd])
 
   const timesOf = useMemo(() => {
-    return (a: ShiftAssignment) =>
+    return (a: ShiftAssignment): Times =>
       timeEdits[a.id] ?? { start: hhmm(a.start_time), end: hhmm(a.end_time) }
   }, [timeEdits])
 
@@ -60,6 +62,11 @@ export default function Shifts() {
     return map
   }, [data])
 
+  const nameOf = useMemo(
+    () => (a: ShiftAssignment) => employeeById.get(a.employee_id)?.full_name ?? '—',
+    [employeeById],
+  )
+
   const byStand = useMemo(() => {
     const map = new Map<string, ShiftAssignment[]>()
     for (const a of data?.assignments ?? []) {
@@ -67,27 +74,31 @@ export default function Shifts() {
       list.push(a)
       map.set(a.stand_id, list)
     }
+    // Önce vardiyalar (saate göre), sonra eğitimler
     for (const list of map.values()) {
       list.sort((a, b) => {
+        const byKind = (a.kind === 'egitim' ? 1 : 0) - (b.kind === 'egitim' ? 1 : 0)
+        if (byKind !== 0) return byKind
         const byTime = timesOf(a).start.localeCompare(timesOf(b).start)
         if (byTime !== 0) return byTime
-        return (employeeById.get(a.employee_id)?.full_name ?? '').localeCompare(
-          employeeById.get(b.employee_id)?.full_name ?? '',
-          'tr',
-        )
+        return nameOf(a).localeCompare(nameOf(b), 'tr')
       })
     }
     return map
-  }, [data, employeeById, timesOf])
+  }, [data, nameOf, timesOf])
 
-  /** Aynı vardiya saatinde başka bir standa yazılmış olanlar tekrar önerilmez. */
-  const takenInNewShift = useMemo(() => {
+  /** Aynı vardiyaya (ya da aynı güne, eğitim için) zaten yazılmış olanlar önerilmez. */
+  const alreadyTaken = useMemo(() => {
     const set = new Set<string>()
     for (const a of data?.assignments ?? []) {
-      if (timesOf(a).start === newShift.start) set.add(a.employee_id)
+      if (newEntry.kind === 'egitim') {
+        if (a.kind === 'egitim') set.add(a.employee_id)
+      } else if (a.kind === 'vardiya' && timesOf(a).start === newEntry.start) {
+        set.add(a.employee_id)
+      }
     }
     return set
-  }, [data, newShift, timesOf])
+  }, [data, newEntry, timesOf])
 
   const shareText = useMemo(() => {
     if (!data) return ''
@@ -100,14 +111,15 @@ export default function Shifts() {
       } else {
         for (const a of list) {
           const t = timesOf(a)
-          const name = employeeById.get(a.employee_id)?.full_name ?? '—'
-          lines.push(`• ${t.start}-${t.end}  ${name}`)
+          const range = t.start && t.end ? `${t.start}-${t.end}  ` : ''
+          const suffix = a.kind === 'egitim' ? ' (eğitim)' : ''
+          lines.push(`• ${range}${nameOf(a)}${suffix}`)
         }
       }
       lines.push('')
     }
     return lines.join('\n').trim()
-  }, [data, date, byStand, employeeById, timesOf])
+  }, [data, date, byStand, nameOf, timesOf])
 
   async function run(fn: () => Promise<{ error: unknown }>) {
     setBusy(true)
@@ -125,8 +137,9 @@ export default function Shifts() {
         work_date: date,
         stand_id: standId,
         employee_id: employeeId,
-        start_time: newShift.start,
-        end_time: newShift.end,
+        kind: newEntry.kind,
+        start_time: newEntry.start,
+        end_time: newEntry.end,
       }),
     )
   }
@@ -135,14 +148,17 @@ export default function Shifts() {
     await run(async () => supabase.from('shift_assignments').delete().eq('id', id))
   }
 
-  async function changeTime(a: ShiftAssignment, field: 'start' | 'end', value: string) {
-    if (!value) return
-    const next = { ...timesOf(a), [field]: value }
-    setTimeEdits((prev) => ({ ...prev, [a.id]: next }))
+  async function changeTime(a: ShiftAssignment, field: keyof Times, value: string) {
+    // Vardiya kayıtlarında saat zorunlu; eğitimde boş bırakılabilir.
+    if (!value && a.kind === 'vardiya') return
+
+    setTimeEdits((prev) => ({ ...prev, [a.id]: { ...timesOf(a), [field]: value } }))
     setActionError(null)
+
+    const column = field === 'start' ? 'start_time' : 'end_time'
     const { error } = await supabase
       .from('shift_assignments')
-      .update(field === 'start' ? { start_time: value } : { end_time: value })
+      .update({ [column]: value || null })
       .eq('id', a.id)
     if (error) setActionError(error.message)
   }
@@ -153,7 +169,7 @@ export default function Shifts() {
     const prev = addDays(date, -1)
     const { data: prevRows, error: readError } = await supabase
       .from('shift_assignments')
-      .select('stand_id, employee_id, role, start_time, end_time')
+      .select('stand_id, employee_id, kind, role, start_time, end_time')
       .eq('work_date', prev)
 
     if (readError) {
@@ -171,7 +187,7 @@ export default function Shifts() {
       .from('shift_assignments')
       .upsert(
         prevRows.map((r) => ({ ...r, work_date: date })),
-        { onConflict: 'work_date,stand_id,employee_id,start_time', ignoreDuplicates: true },
+        { onConflict: 'work_date,stand_id,employee_id,kind,start_time', ignoreDuplicates: true },
       )
 
     if (insertError) setActionError(insertError.message)
@@ -216,7 +232,7 @@ export default function Shifts() {
         </Button>
       </div>
 
-      <Card title="Eklenecek vardiya">
+      <Card title="Ne ekleniyor?">
         <Tabs
           active={preset}
           onChange={setPreset}
@@ -224,6 +240,7 @@ export default function Shifts() {
             { id: 'sabah' as PresetId, label: 'Sabah 08:00–15:30' },
             { id: 'aksam' as PresetId, label: 'Akşam 15:30–23:00' },
             { id: 'ozel' as PresetId, label: 'Özel saat' },
+            { id: 'egitim' as PresetId, label: 'Eğitim' },
           ]}
         />
         {preset === 'ozel' && (
@@ -244,8 +261,9 @@ export default function Shifts() {
           </div>
         )}
         <p className="mt-2 text-xs text-stone-500">
-          Aşağıda eklediğin kişiler bu saatlerle kaydedilir. Ekledikten sonra her satırın saatini
-          tek tek değiştirebilirsin.
+          {preset === 'egitim'
+            ? 'Eğitime gelen kişi vardiyadaki birinin yanına yazılır, saat girmek zorunlu değildir. İstersen satırdan saat de verebilirsin.'
+            : 'Aşağıda eklediğin kişiler bu saatlerle kaydedilir. Ekledikten sonra her satırın saatini tek tek değiştirebilirsin.'}
         </p>
       </Card>
 
@@ -262,22 +280,37 @@ export default function Shifts() {
       <div className="grid gap-4 md:grid-cols-2">
         {data?.stands.map((stand) => {
           const list = byStand.get(stand.id) ?? []
-          const available = data.employees.filter((e) => !takenInNewShift.has(e.id))
+          const shiftCount = list.filter((a) => a.kind === 'vardiya').length
+          const trainingCount = list.length - shiftCount
+          const available = data.employees.filter((e) => !alreadyTaken.has(e.id))
           return (
             <Card
               key={stand.id}
               title={stand.name}
-              action={<span className="text-xs text-stone-500">{list.length} kişi</span>}
+              action={
+                <span className="text-xs text-stone-500">
+                  {shiftCount} kişi{trainingCount > 0 ? ` · ${trainingCount} eğitim` : ''}
+                </span>
+              }
             >
               <ul className="space-y-2">
                 {list.length === 0 && <Empty>Kimse atanmadı</Empty>}
                 {list.map((a) => {
                   const t = timesOf(a)
+                  const isTraining = a.kind === 'egitim'
                   return (
-                    <li key={a.id} className="rounded-xl bg-stone-50 px-3 py-2">
+                    <li
+                      key={a.id}
+                      className={`rounded-xl px-3 py-2 ${isTraining ? 'bg-amber-50' : 'bg-stone-50'}`}
+                    >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm text-stone-800">
-                          {employeeById.get(a.employee_id)?.full_name ?? '—'}
+                        <span className="flex min-w-0 items-center gap-2 text-sm text-stone-800">
+                          <span className="truncate">{nameOf(a)}</span>
+                          {isTraining && (
+                            <span className="shrink-0 rounded-md bg-amber-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">
+                              Eğitim
+                            </span>
+                          )}
                         </span>
                         <Button
                           variant="ghost"
@@ -305,6 +338,9 @@ export default function Shifts() {
                           className={timeInputClass}
                           aria-label="Bitiş saati"
                         />
+                        {isTraining && !t.start && !t.end && (
+                          <span className="text-xs text-stone-400">saat isteğe bağlı</span>
+                        )}
                       </div>
                     </li>
                   )
@@ -319,8 +355,10 @@ export default function Shifts() {
               >
                 <option value="">
                   {available.length === 0
-                    ? 'Bu vardiyada boşta çalışan kalmadı'
-                    : `+ Çalışan ekle (${newShift.start}–${newShift.end})…`}
+                    ? 'Boşta kimse kalmadı'
+                    : newEntry.kind === 'egitim'
+                      ? '+ Eğitime gelen ekle…'
+                      : `+ Çalışan ekle (${newEntry.start}–${newEntry.end})…`}
                 </option>
                 {available.map((e) => (
                   <option key={e.id} value={e.id}>

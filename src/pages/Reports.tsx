@@ -7,7 +7,12 @@ import { MOVEMENT_LABELS, type CashMovement, type Stand } from '../lib/types'
 import { Card, Empty, ErrorBox, Field, Input, Spinner, Stat } from '../components/ui'
 
 type RevenueRow = { business_date: string; stand_id: string; cash_amount: number; pos_amount: number }
-type ShiftRow = { work_date: string; employee_id: string; employees: { full_name: string } | null }
+type ShiftRow = {
+  work_date: string
+  employee_id: string
+  kind: 'vardiya' | 'egitim'
+  employees: { full_name: string } | null
+}
 
 type Data = {
   stands: Stand[]
@@ -31,7 +36,7 @@ async function load(from: string, to: string): Promise<Data> {
       .lte('movement_date', to),
     supabase
       .from('shift_assignments')
-      .select('work_date, employee_id, employees(full_name)')
+      .select('work_date, employee_id, kind, employees(full_name)')
       .gte('work_date', from)
       .lte('work_date', to),
   ])
@@ -95,12 +100,15 @@ export default function Reports() {
   }, [data])
 
   const byEmployee = useMemo(() => {
-    const map = new Map<string, number>()
+    const map = new Map<string, { shifts: number; trainings: number }>()
     for (const s of data?.shifts ?? []) {
       const name = s.employees?.full_name ?? '—'
-      map.set(name, (map.get(name) ?? 0) + 1)
+      const row = map.get(name) ?? { shifts: 0, trainings: 0 }
+      if (s.kind === 'egitim') row.trainings += 1
+      else row.shifts += 1
+      map.set(name, row)
     }
-    return [...map.entries()].sort((a, b) => b[1] - a[1])
+    return [...map.entries()].sort((a, b) => b[1].shifts - a[1].shifts)
   }, [data])
 
   return (
@@ -196,10 +204,15 @@ export default function Reports() {
               <Empty>Bu aralıkta vardiya kaydı yok.</Empty>
             ) : (
               <ul className="divide-y divide-stone-100 text-sm">
-                {byEmployee.map(([name, count]) => (
-                  <li key={name} className="flex justify-between py-2">
-                    <span>{name}</span>
-                    <span className="tabular-nums text-stone-600">{count} gün</span>
+                {byEmployee.map(([name, row]) => (
+                  <li key={name} className="flex justify-between gap-3 py-2">
+                    <span className="min-w-0 truncate">{name}</span>
+                    <span className="shrink-0 tabular-nums text-stone-600">
+                      {row.shifts} vardiya
+                      {row.trainings > 0 && (
+                        <span className="ml-1 text-amber-700">· {row.trainings} eğitim</span>
+                      )}
+                    </span>
                   </li>
                 ))}
               </ul>

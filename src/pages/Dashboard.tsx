@@ -14,6 +14,7 @@ type Data = {
   monthPos: number
   cashBalance: number
   tomorrowByStand: Map<string, number>
+  trainingByStand: Map<string, number>
   countedStandIds: Set<string>
   missingRevenueStandIds: string[]
 }
@@ -31,7 +32,7 @@ async function load(): Promise<Data> {
       .gte('business_date', monthStart)
       .lte('business_date', day),
     supabase.rpc('cash_summary'),
-    supabase.from('shift_assignments').select('stand_id').eq('work_date', next),
+    supabase.from('shift_assignments').select('stand_id, kind').eq('work_date', next),
     supabase.from('stock_counts').select('stand_id').eq('count_date', day),
   ])
 
@@ -41,9 +42,13 @@ async function load(): Promise<Data> {
   const rows = monthRevenues.data ?? []
   const todayRows = rows.filter((r) => r.business_date === day)
 
+  // Eğitime gelenler vardiya sayılmaz — bir standda sadece eğitim varsa
+  // o stand hâlâ "atama yok" durumundadır.
   const tomorrowByStand = new Map<string, number>()
+  const trainingByStand = new Map<string, number>()
   for (const row of shifts.data ?? []) {
-    tomorrowByStand.set(row.stand_id, (tomorrowByStand.get(row.stand_id) ?? 0) + 1)
+    const target = row.kind === 'egitim' ? trainingByStand : tomorrowByStand
+    target.set(row.stand_id, (target.get(row.stand_id) ?? 0) + 1)
   }
 
   const standList = (stands.data ?? []) as Stand[]
@@ -57,6 +62,7 @@ async function load(): Promise<Data> {
     monthPos: rows.reduce((s, r) => s + Number(r.pos_amount), 0),
     cashBalance: Number(summaryRow?.cash_balance ?? 0),
     tomorrowByStand,
+    trainingByStand,
     countedStandIds: new Set((counts.data ?? []).map((c) => c.stand_id)),
     missingRevenueStandIds: standList
       .filter((s) => !todayRows.some((r) => r.stand_id === s.id))
@@ -104,6 +110,7 @@ export default function Dashboard() {
               <ul className="space-y-2">
                 {data.stands.map((stand) => {
                   const count = data.tomorrowByStand.get(stand.id) ?? 0
+                  const training = data.trainingByStand.get(stand.id) ?? 0
                   return (
                     <li
                       key={stand.id}
@@ -112,6 +119,9 @@ export default function Dashboard() {
                       <span className="text-stone-800">{stand.name}</span>
                       <span className={count === 0 ? 'font-medium text-red-700' : 'text-stone-600'}>
                         {count === 0 ? 'atama yok' : `${count} kişi`}
+                        {training > 0 && (
+                          <span className="ml-1 text-amber-700">+{training} eğitim</span>
+                        )}
                       </span>
                     </li>
                   )

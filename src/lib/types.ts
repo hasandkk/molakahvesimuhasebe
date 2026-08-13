@@ -35,14 +35,18 @@ export type ProductVariant = {
   is_active: boolean
 }
 
+/** 'vardiya' = normal çalışan · 'egitim' = eğitime gelen, tam vardiya durmaz */
+export type ShiftKind = 'vardiya' | 'egitim'
+
 export type ShiftAssignment = {
   id: string
   work_date: string
   stand_id: string
   employee_id: string
-  /** "HH:MM:SS" — Postgres time */
-  start_time: string
-  end_time: string
+  kind: ShiftKind
+  /** "HH:MM:SS" — Postgres time. Eğitim kayıtlarında boş olabilir. */
+  start_time: string | null
+  end_time: string | null
   role: string | null
   note: string | null
 }

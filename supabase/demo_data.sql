@@ -49,7 +49,10 @@ insert into public.employees (full_name, phone, daily_wage) values
   ('Elif Kaya',     '0534 333 44 55', 950),
   ('Burak Şahin',   '0535 444 55 66', 900),
   ('Zeynep Aydın',  '0536 555 66 77', 950),
-  ('Emre Çelik',    '0537 666 77 88', 850)
+  ('Emre Çelik',    '0537 666 77 88', 850),
+  ('Seda Aksoy',    '0538 777 88 99', 900),
+  ('Kerem Yıldız',  '0539 888 99 00', 850),
+  ('Hakan Öztürk',  '0530 999 00 11', 900)
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------
@@ -79,7 +82,8 @@ do $$
 declare
   demo_stands   text[] := array['Kızılay Standı', 'Tunalı Standı', 'Bahçelievler Standı'];
   demo_people   text[] := array['Ahmet Yılmaz', 'Mehmet Demir', 'Elif Kaya',
-                                'Burak Şahin', 'Zeynep Aydın', 'Emre Çelik'];
+                                'Burak Şahin', 'Zeynep Aydın', 'Emre Çelik',
+                                'Seda Aksoy', 'Kerem Yıldız', 'Hakan Öztürk'];
   stand_ids     uuid[];
   emp_ids       uuid[];
   emp_count     int;
@@ -240,11 +244,12 @@ begin
       -- v_slot 0 = sabah vardiyası, 1 = akşam vardiyası
       for v_slot in 0..1 loop
         insert into public.shift_assignments
-          (work_date, stand_id, employee_id, start_time, end_time, role)
+          (work_date, stand_id, employee_id, kind, start_time, end_time, role)
         values (
           v_day,
           stand_ids[v_ix],
           emp_ids[1 + (((v_ix - 1) * 2 + v_slot + v_offset + 10) % emp_count)],
+          'vardiya',
           case when v_slot = 0 then time '08:00' else time '15:30' end,
           case when v_slot = 0 then time '15:30' else time '23:00' end,
           case when v_slot = 0 then 'sorumlu' else null end
@@ -252,6 +257,33 @@ begin
         on conflict do nothing;
       end loop;
     end loop;
+
+    -- Yoğun günlerde Kızılay'ın sabah vardiyasında iki kişi birden çalışır
+    if v_offset = -1 or v_offset % 3 = 0 then
+      insert into public.shift_assignments
+        (work_date, stand_id, employee_id, kind, start_time, end_time)
+      values (v_day, stand_ids[1], emp_ids[1 + ((6 + v_offset + 10) % emp_count)],
+              'vardiya', time '08:00', time '15:30')
+      on conflict do nothing;
+    end if;
+
+    -- Eğitime gelenler: Tunalı'da vardiyadakinin yanında dururlar.
+    -- Yarın iki kişi birden eğitimde.
+    if v_offset = -1 or v_offset % 5 = 0 then
+      insert into public.shift_assignments
+        (work_date, stand_id, employee_id, kind, start_time, end_time)
+      values (v_day, stand_ids[2], emp_ids[1 + ((7 + v_offset + 10) % emp_count)],
+              'egitim', null, null)
+      on conflict do nothing;
+    end if;
+
+    if v_offset in (-1, 0) then
+      insert into public.shift_assignments
+        (work_date, stand_id, employee_id, kind, start_time, end_time)
+      values (v_day, stand_ids[2], emp_ids[1 + ((8 + v_offset + 10) % emp_count)],
+              'egitim', null, null)
+      on conflict do nothing;
+    end if;
   end loop;
 
   -- 2 gün önce Bahçelievler'de sabah vardiyası geç açılmış (özel saat örneği)

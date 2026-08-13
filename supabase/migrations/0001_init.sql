@@ -110,32 +110,55 @@ create table if not exists public.product_variants (
 -- shift_assignments — hangi gün, hangi standda, kim, hangi saatlerde
 --   Standart vardiyalar 08:00-15:30 ve 15:30-23:00, ama saatler
 --   atama bazında serbestçe değiştirilebilir.
+--
+--   kind = 'vardiya' -> normal çalışan, saatleri bellidir
+--   kind = 'egitim'  -> eğitime gelen kişi; vardiyada duran birinin
+--                       yanında bulunur, tam vardiya kalmaz. Saat girmek
+--                       zorunlu değildir, bu yüzden saatler NULL olabilir.
 -- ---------------------------------------------------------------------
 create table if not exists public.shift_assignments (
   id           uuid primary key default gen_random_uuid(),
   work_date    date not null,
   stand_id     uuid not null references public.stands(id) on delete cascade,
   employee_id  uuid not null references public.employees(id) on delete cascade,
-  start_time   time not null default '08:00',
-  end_time     time not null default '15:30',
+  kind         text not null default 'vardiya' check (kind in ('vardiya', 'egitim')),
+  start_time   time,
+  end_time     time,
   role         text,
   note         text,
   created_by   uuid references auth.users(id) default auth.uid(),
   created_at   timestamptz not null default now()
 );
 
--- Bu betiğin saat kolonlarından önceki sürümünü çalıştırdıysan, kolonlar
--- ve yeni benzersizlik kuralı burada eklenir.
+-- Bu betiğin önceki sürümlerini çalıştırdıysan eksik kolonlar burada eklenir.
 alter table public.shift_assignments
-  add column if not exists start_time time not null default '08:00',
-  add column if not exists end_time   time not null default '15:30';
+  add column if not exists start_time time,
+  add column if not exists end_time   time,
+  add column if not exists kind       text not null default 'vardiya';
+
+-- Eğitim kayıtlarında saat girilmeyebildiği için saatler NULL olabilmeli.
+alter table public.shift_assignments
+  alter column start_time drop not null,
+  alter column end_time   drop not null;
+
+do $$
+begin
+  alter table public.shift_assignments
+    add constraint shift_assignments_kind_check check (kind in ('vardiya', 'egitim'));
+exception
+  when duplicate_object then null;
+end;
+$$;
 
 -- Aynı kişi aynı gün sabah bir standda, akşam başka standda çalışabilir;
--- bu yüzden benzersizlik kuralına başlangıç saati de dahil.
+-- bu yüzden benzersizlik kuralına vardiya türü ve başlangıç saati de dahil.
+-- NULLS NOT DISTINCT: saatsiz eğitim kaydı aynı standa iki kez eklenemesin.
 alter table public.shift_assignments
   drop constraint if exists shift_assignments_work_date_stand_id_employee_id_key;
-create unique index if not exists shift_assignments_uniq
-  on public.shift_assignments (work_date, stand_id, employee_id, start_time);
+drop index if exists public.shift_assignments_uniq;
+create unique index shift_assignments_uniq
+  on public.shift_assignments (work_date, stand_id, employee_id, kind, start_time)
+  nulls not distinct;
 
 create index if not exists shift_assignments_date_idx on public.shift_assignments (work_date);
 create index if not exists shift_assignments_stand_idx on public.shift_assignments (stand_id);

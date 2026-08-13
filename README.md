@@ -8,7 +8,7 @@ React + Vite + TypeScript + Tailwind, arka planda Supabase (Postgres + Auth).
 | Ekran        | İçerik |
 |--------------|--------|
 | **Özet**     | Bugünkü ciro, aylık ciro, kasadaki nakit, yarınki vardiya durumu, ciro/sayım girilmemiş standlar |
-| **Vardiya**  | Gün seç → her standa çalışan ata → gruba atılacak mesajı tek tuşla kopyala. Standart vardiyalar 08:00–15:30 ve 15:30–23:00; saatler her atama için tek tek değiştirilebilir. “Bir önceki günü kopyala” kısayolu var |
+| **Vardiya**  | Gün seç → her standa çalışan ata → gruba atılacak mesajı tek tuşla kopyala. Standart vardiyalar 08:00–15:30 ve 15:30–23:00; saatler her atama için tek tek değiştirilebilir. Aynı vardiyada birden fazla kişi çalışabilir. Eğitime gelenler ayrı tür olarak yazılır, saat girmek zorunlu değildir. “Bir önceki günü kopyala” kısayolu var |
 | **Kasa**     | Stand bazlı gün sonu nakit/POS girişi · para çekme, gider, kasaya giriş, bankaya yatırma hareketleri · fiziki kasa sayımı ve açık/fazla tespiti |
 | **Stok**     | Akşam sayımı (100g/250g/500g/1kg/dökme) · depodan standa mal transferi · beklenen–sayılan farkı ve tahmini satış tutarı |
 | **Raporlar** | Tarih aralığında stand bazlı ciro, kim ne kadar çekti, gider kalemleri, çalışan başına vardiya sayısı |
@@ -27,6 +27,20 @@ tahmini ciro  = Σ (eksilen × ürün fiyatı)
 
 “Eksilen” eksi çıkıyorsa girilmemiş bir transfer ya da sayım hatası vardır.
 Tahmini ciroyu o günün gerçek nakit+POS toplamıyla karşılaştırarak açığı görebilirsin.
+
+### Vardiya mantığı
+
+Bir atama ya **vardiya** ya da **eğitim** olur:
+
+- **Vardiya** — normal çalışan, saatleri bellidir. Aynı standın aynı vardiyasına
+  istediğin kadar kişi yazabilirsin. Aynı kişi sabah bir standda, akşam başka
+  standda çalışabilir.
+- **Eğitim** — vardiyadaki birinin yanına gelen kişi. Tam vardiya durmadığı için
+  saat girmek zorunlu değil; istersen saat de verebilirsin. Aynı anda birden
+  fazla kişi eğitimde olabilir.
+
+Eğitim kayıtları vardiya sayılmaz: bir standda sadece eğitim varsa Özet ekranı
+o standı hâlâ “atama yok” diye uyarır, Raporlar da vardiya ile eğitimi ayrı sayar.
 
 ### Kasa mantığı
 
