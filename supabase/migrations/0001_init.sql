@@ -6,6 +6,10 @@
 -- Bu kolonlar hiçbir sorguda filtre olarak kullanılmıyor; indeks yalnızca
 -- bir auth kullanıcısı silinirken işe yarar ki bu neredeyse hiç olmaz.
 -- Diğer tüm foreign key kolonları indekslidir.
+--
+-- Betik istendiği kadar tekrar çalıştırılabilir. Rapor fonksiyonları
+-- create or replace'ten önce düşürülüyor: dönüş kolonları değiştiğinde
+-- Postgres "cannot change return type of existing function" hatası verir.
 -- =====================================================================
 
 create extension if not exists pgcrypto;
@@ -217,6 +221,7 @@ create index if not exists employee_bonuses_employee_idx on public.employee_bonu
 --   Aynı gün iki vardiya çalışılsa da bir gün sayılır; shifts kolonu kaç
 --   vardiya olduğunu bilgi olarak taşır.
 -- ---------------------------------------------------------------------
+drop function if exists public.payroll(date, date);
 create or replace function public.payroll(p_from date, p_to date)
 returns table (
   employee_id  uuid,
@@ -417,6 +422,7 @@ create index if not exists stock_transfer_items_variant_idx on public.stock_tran
 --   Transfer ve satışlar "son sayımdan SONRA, bu tarihe kadar" alınır;
 --   sayım akşam yapıldığı için o günün satışları da dahildir.
 -- ---------------------------------------------------------------------
+drop function if exists public.stand_stock_report(uuid, date);
 create or replace function public.stand_stock_report(p_stand_id uuid, p_date date)
 returns table (
   variant_id     uuid,
@@ -522,6 +528,7 @@ $$;
 -- ---------------------------------------------------------------------
 drop function if exists public.stock_daily_movement(date, date, uuid);
 
+drop function if exists public.stock_daily_sales(date, date, uuid);
 create or replace function public.stock_daily_sales(
   p_from date,
   p_to date,
@@ -569,6 +576,7 @@ $$;
 --   Fiziki sayımların teorik stoktan sapması — fire/kayıp takibi.
 --   Eksi değer stokta olması gerekenden az bulunduğunu gösterir.
 -- ---------------------------------------------------------------------
+drop function if exists public.stock_count_variance(date, date, uuid);
 create or replace function public.stock_count_variance(
   p_from date,
   p_to date,
@@ -623,6 +631,7 @@ $$;
 --   Nakit bakiye = toplam nakit ciro + hareketlerin işaretli toplamı.
 --   POS tutarları bankaya gittiği için nakit bakiyeye dahil edilmez.
 -- ---------------------------------------------------------------------
+drop function if exists public.cash_balance_until(date);
 create or replace function public.cash_balance_until(p_date date)
 returns numeric
 language sql
@@ -638,6 +647,7 @@ as $$
     ), 0);
 $$;
 
+drop function if exists public.cash_summary();
 create or replace function public.cash_summary()
 returns table (
   cash_income   numeric,
