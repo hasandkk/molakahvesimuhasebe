@@ -39,6 +39,10 @@ fark = sayılan − teorik stok      (eksi = fire / kayıp / girilmemiş satış
 Bir standın ilk sayımı baz oluşturur, sapma sayılmaz — öncesinde
 karşılaştıracak bir şey yoktur.
 
+**Stok modülünde para hesabı yoktur.** Kampanya ve çoklu satış olduğu için
+adet × fiyat gerçek ciroyu vermez; ciro “Kasa” ekranından stand bazlı elle
+girilir. Ürün fiyatı alanı bilgi amaçlıdır, hiçbir hesaba girmez.
+
 ### Vardiya mantığı
 
 Bir atama ya **vardiya** ya da **eğitim** olur:

@@ -497,10 +497,8 @@ function StockHistoryTab({ data }: { data: Data }) {
     [data.variances, standId],
   )
 
-  const totalAmount = sales.reduce((s, r) => s + Number(r.amount), 0)
   const totalQty = sales.reduce((s, r) => s + Number(r.quantity), 0)
-  const hasPrice = sales.some((r) => Number(r.amount) !== 0)
-  const varianceAmount = variances.reduce((s, r) => s + Number(r.variance_amount), 0)
+  const salesDays = new Set(sales.map((r) => r.sale_date)).size
 
   /** Tarih (yeniden eskiye) → stand → gramajlar */
   const byDate = useMemo(() => {
@@ -533,21 +531,13 @@ function StockHistoryTab({ data }: { data: Data }) {
 
       <div className="grid grid-cols-2 gap-3">
         <Stat label="Satılan" value={`${qty(totalQty)} kalem`} />
-        <Stat
-          label="Tutar"
-          value={hasPrice ? money(totalAmount) : '—'}
-          sub={hasPrice ? undefined : 'ürün fiyatı girilmemiş'}
-        />
+        <Stat label="Satış girilen gün" value={salesDays} />
       </div>
 
       {variances.length > 0 && (
         <Card
           title="Sayım farkları"
-          action={
-            <span className={`text-xs font-semibold tabular-nums ${varianceAmount < 0 ? 'text-red-700' : 'text-amber-700'}`}>
-              {money(varianceAmount)}
-            </span>
-          }
+          action={<span className="text-xs text-stone-500">{variances.length} kalem</span>}
         >
           <ul className="divide-y divide-stone-100 text-sm">
             {variances.map((v) => (
@@ -585,18 +575,15 @@ function StockHistoryTab({ data }: { data: Data }) {
           <Card key={day.date} title={formatLong(day.date)}>
             <div className="space-y-4">
               {day.stands.map(([standName, list]) => {
-                const dayTotal = list.reduce((s, r) => s + Number(r.amount), 0)
                 return (
                   <div key={standName}>
                     <div className="flex items-baseline justify-between gap-2">
                       <h3 className="text-xs font-semibold uppercase tracking-wide text-stone-500">
                         {standName}
                       </h3>
-                      {hasPrice && (
-                        <span className="text-sm font-semibold tabular-nums text-stone-800">
-                          {money(dayTotal)}
-                        </span>
-                      )}
+                      <span className="text-xs tabular-nums text-stone-500">
+                        {qty(list.reduce((sum, r) => sum + Number(r.quantity), 0))} kalem
+                      </span>
                     </div>
                     <ul className="mt-1 divide-y divide-stone-100">
                       {list.map((r) => (
@@ -605,13 +592,8 @@ function StockHistoryTab({ data }: { data: Data }) {
                             {r.size_label}
                             <span className="ml-1 text-xs text-stone-400">{r.unit}</span>
                           </span>
-                          <span className="flex shrink-0 items-baseline gap-3">
-                            {hasPrice && (
-                              <span className="text-xs text-stone-400">{money(r.amount)}</span>
-                            )}
-                            <span className="w-16 text-right font-semibold tabular-nums text-stone-900">
-                              {qty(r.quantity)}
-                            </span>
+                          <span className="w-16 shrink-0 text-right font-semibold tabular-nums text-stone-900">
+                            {qty(r.quantity)}
                           </span>
                         </li>
                       ))}

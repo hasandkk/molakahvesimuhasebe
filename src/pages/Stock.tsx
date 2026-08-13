@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useQuery } from '../lib/useQuery'
 import { fetchActiveStands } from '../lib/refData'
 import { formatLong, formatShort, today } from '../lib/date'
-import { money, parseNumber, qty } from '../lib/format'
+import { parseNumber, qty } from '../lib/format'
 import type { Stand, StockReportRow, StockTransfer } from '../lib/types'
 import {
   Button,
@@ -167,9 +167,7 @@ function SalesTab({
   const soldOf = (row: StockReportRow) => parseNumber(values[row.variant_id] ?? '')
   const remainingOf = (row: StockReportRow) => Number(row.on_hand_before) - soldOf(row)
 
-  const total = rows.reduce((sum, r) => sum + soldOf(r) * Number(r.price ?? 0), 0)
-  const totalQty = rows.reduce((sum, r) => sum + soldOf(r), 0)
-  const hasPrice = rows.some((r) => r.price !== null)
+  const soldLines = rows.filter((r) => soldOf(r) > 0).length
 
   async function save() {
     setBusy(true)
@@ -220,15 +218,6 @@ function SalesTab({
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-3">
-        <Stat label="Bugün satılan" value={`${qty(totalQty)} kalem`} />
-        <Stat
-          label="Tutar"
-          value={hasPrice ? money(total) : '—'}
-          sub={hasPrice ? undefined : 'önce ürün fiyatı gir'}
-        />
-      </div>
-
       <Card
         title={alreadySaved ? 'Günlük satış (kayıtlı)' : 'Günlük satış'}
         action={
@@ -293,14 +282,15 @@ function SalesTab({
         </Field>
 
         <p className="mt-3 text-xs text-stone-500">
-          Buraya o gün <strong>satılan</strong> miktarı yaz; stok kendiliğinden düşer. Toplam stoğu
+          Buraya o gün <strong>satılan adedi</strong> yaz; stok kendiliğinden düşer. Toplam stoğu
           saymak zorunda değilsin — sayımı ara sıra “Sayım” sekmesinden kontrol amaçlı yaparsın.
+          Ciro hesabı burada yapılmaz; günlük ciroyu “Kasa” ekranından girersin.
         </p>
       </Card>
 
       <StickyBar>
         <Button className="w-full" onClick={() => void save()} disabled={busy}>
-          {saved ? '✓ Kaydedildi' : `Satışı kaydet${hasPrice ? ` · ${money(total)}` : ''}`}
+          {saved ? '✓ Kaydedildi' : `Satışı kaydet (${soldLines}/${rows.length} gramaj)`}
         </Button>
       </StickyBar>
     </>
@@ -344,10 +334,10 @@ function CountTab({
   const filledRows = rows.filter((r) => (values[r.variant_id] ?? '') !== '')
   const isFirstCount = rows.length > 0 && !rows.some(hasBaseline)
 
-  const varianceAmount = rows.reduce((sum, r) => {
+  const varianceLines = rows.filter((r) => {
     const v = varianceOf(r)
-    return v === null ? sum : sum + v * Number(r.price ?? 0)
-  }, 0)
+    return v !== null && v !== 0
+  }).length
 
   async function save() {
     if (filledRows.length === 0) {
@@ -402,10 +392,10 @@ function CountTab({
           sub={prevDate ? 'teorik stok buna göre' : 'ilk sayım'}
         />
         <Stat
-          label="Fark tutarı"
-          value={money(varianceAmount)}
-          tone={varianceAmount < 0 ? 'bad' : varianceAmount > 0 ? 'warn' : 'good'}
-          sub="eksi = kayıp"
+          label="Fark bulunan"
+          value={`${varianceLines} gramaj`}
+          tone={varianceLines > 0 ? 'warn' : 'good'}
+          sub={varianceLines > 0 ? 'aşağıda işaretli' : 'hepsi tutuyor'}
         />
       </div>
 
