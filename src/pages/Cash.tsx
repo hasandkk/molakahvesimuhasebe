@@ -163,7 +163,7 @@ export default function Cash() {
               size="sm"
               onClick={() => void saveRevenues()}
               disabled={busy}
-              className="hidden md:inline-flex"
+              className="max-md:hidden"
             >
               {saved ? '✓ Kaydedildi' : 'Kaydet'}
             </Button>

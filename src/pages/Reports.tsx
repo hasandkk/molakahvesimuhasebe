@@ -12,7 +12,8 @@ import {
   type PayrollRow,
   type PayrollSettings,
   type Stand,
-  type StockMovementRow,
+  type StockSaleRow,
+  type StockVarianceRow,
 } from '../lib/types'
 import { Button, Card, Empty, ErrorBox, Field, Input, Select, Spinner, Stat, Tabs } from '../components/ui'
 
@@ -37,7 +38,8 @@ type Data = {
   revenues: RevenueRow[]
   movements: CashMovement[]
   shifts: ShiftRow[]
-  stock: StockMovementRow[]
+  sales: StockSaleRow[]
+  variances: StockVarianceRow[]
   payroll: PayrollRow[]
   settings: PayrollSettings | null
   bonuses: EmployeeBonus[]
@@ -46,7 +48,7 @@ type Data = {
 const hhmm = (t: string | null) => (t ? t.slice(0, 5) : '')
 
 async function load(from: string, to: string): Promise<Data> {
-  const [stands, employees, revenues, movements, shifts, stock, payroll, settings, bonuses] =
+  const [stands, employees, revenues, movements, shifts, sales, variances, payroll, settings, bonuses] =
     await Promise.all([
     fetchAllStands(),
     fetchAllEmployees(),
@@ -61,14 +63,15 @@ async function load(from: string, to: string): Promise<Data> {
       .select('work_date, kind, start_time, end_time, stand_id, employee_id, stands(name), employees(full_name)')
       .gte('work_date', from)
       .lte('work_date', to),
-    supabase.rpc('stock_daily_movement', { p_from: from, p_to: to, p_stand_id: null }),
+    supabase.rpc('stock_daily_sales', { p_from: from, p_to: to, p_stand_id: null }),
+    supabase.rpc('stock_count_variance', { p_from: from, p_to: to, p_stand_id: null }),
     supabase.rpc('payroll', { p_from: from, p_to: to }),
     supabase.from('payroll_settings').select('*').limit(1),
     supabase.from('employee_bonuses').select('*').gte('work_date', from).lte('work_date', to),
   ])
 
   const err =
-    revenues.error ?? movements.error ?? shifts.error ?? stock.error ??
+    revenues.error ?? movements.error ?? shifts.error ?? sales.error ?? variances.error ??
     payroll.error ?? settings.error ?? bonuses.error
   if (err) throw err
 
@@ -78,7 +81,8 @@ async function load(from: string, to: string): Promise<Data> {
     revenues: (revenues.data ?? []) as RevenueRow[],
     movements: (movements.data ?? []) as CashMovement[],
     shifts: (shifts.data ?? []) as unknown as ShiftRow[],
-    stock: (stock.data ?? []) as StockMovementRow[],
+    sales: (sales.data ?? []) as StockSaleRow[],
+    variances: (variances.data ?? []) as StockVarianceRow[],
     payroll: (payroll.data ?? []) as PayrollRow[],
     settings: ((settings.data ?? [])[0] as PayrollSettings | undefined) ?? null,
     bonuses: (bonuses.data ?? []) as EmployeeBonus[],
@@ -110,7 +114,7 @@ export default function Reports() {
         tabs={[
           { id: 'ozet', label: 'Özet' },
           { id: 'vardiya', label: 'Vardiya geçmişi' },
-          { id: 'stok', label: 'Stok geçmişi' },
+          { id: 'stok', label: 'Satış geçmişi' },
           { id: 'maas', label: 'Maaş' },
         ]}
       />
@@ -479,26 +483,32 @@ function ShiftHistoryTab({ data }: { data: Data }) {
   )
 }
 
-/* ----------------------------------------------------------- Stok geçmişi */
+/* --------------------------------------------------- Satış / stok geçmişi */
 
 function StockHistoryTab({ data }: { data: Data }) {
   const [standId, setStandId] = useState('')
 
-  const rows = useMemo(
-    () => (standId ? data.stock.filter((r) => r.stand_id === standId) : data.stock),
-    [data.stock, standId],
+  const sales = useMemo(
+    () => (standId ? data.sales.filter((r) => r.stand_id === standId) : data.sales),
+    [data.sales, standId],
+  )
+  const variances = useMemo(
+    () => (standId ? data.variances.filter((r) => r.stand_id === standId) : data.variances),
+    [data.variances, standId],
   )
 
-  const totalAmount = rows.reduce((s, r) => s + Number(r.sold_amount), 0)
-  const hasPrice = rows.some((r) => Number(r.sold_amount) !== 0)
+  const totalAmount = sales.reduce((s, r) => s + Number(r.amount), 0)
+  const totalQty = sales.reduce((s, r) => s + Number(r.quantity), 0)
+  const hasPrice = sales.some((r) => Number(r.amount) !== 0)
+  const varianceAmount = variances.reduce((s, r) => s + Number(r.variance_amount), 0)
 
   /** Tarih (yeniden eskiye) → stand → gramajlar */
   const byDate = useMemo(() => {
-    const days = new Map<string, Map<string, StockMovementRow[]>>()
-    for (const r of rows) {
-      const stands = days.get(r.count_date) ?? new Map<string, StockMovementRow[]>()
+    const days = new Map<string, Map<string, StockSaleRow[]>>()
+    for (const r of sales) {
+      const stands = days.get(r.sale_date) ?? new Map<string, StockSaleRow[]>()
       stands.set(r.stand_name, [...(stands.get(r.stand_name) ?? []), r])
-      days.set(r.count_date, stands)
+      days.set(r.sale_date, stands)
     }
     return [...days.entries()]
       .sort((a, b) => b[0].localeCompare(a[0]))
@@ -506,7 +516,7 @@ function StockHistoryTab({ data }: { data: Data }) {
         date,
         stands: [...stands.entries()].sort((a, b) => a[0].localeCompare(b[0], 'tr')),
       }))
-  }, [rows])
+  }, [sales])
 
   return (
     <>
@@ -521,25 +531,61 @@ function StockHistoryTab({ data }: { data: Data }) {
         </Select>
       </Field>
 
-      {hasPrice && (
-        <div className="grid grid-cols-1 gap-3">
-          <Stat label="Aralıktaki toplam eksilen tutar" value={money(totalAmount)} sub="eksilen × fiyat" />
-        </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Stat label="Satılan" value={`${qty(totalQty)} kalem`} />
+        <Stat
+          label="Tutar"
+          value={hasPrice ? money(totalAmount) : '—'}
+          sub={hasPrice ? undefined : 'ürün fiyatı girilmemiş'}
+        />
+      </div>
+
+      {variances.length > 0 && (
+        <Card
+          title="Sayım farkları"
+          action={
+            <span className={`text-xs font-semibold tabular-nums ${varianceAmount < 0 ? 'text-red-700' : 'text-amber-700'}`}>
+              {money(varianceAmount)}
+            </span>
+          }
+        >
+          <ul className="divide-y divide-stone-100 text-sm">
+            {variances.map((v) => (
+              <li key={`${v.count_date}-${v.stand_id}-${v.variant_id}`} className="flex items-center justify-between gap-3 py-2">
+                <span className="min-w-0 truncate">
+                  {formatShort(v.count_date)} · {v.stand_name} · {v.size_label}
+                  <span className="ml-1 text-xs text-stone-400">
+                    {qty(v.on_hand)} → {qty(v.counted_qty)}
+                  </span>
+                </span>
+                <span
+                  className={`shrink-0 tabular-nums font-semibold ${
+                    Number(v.variance) < 0 ? 'text-red-700' : 'text-amber-700'
+                  }`}
+                >
+                  {Number(v.variance) > 0 ? '+' : '−'}
+                  {qty(Math.abs(Number(v.variance)))}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-xs text-stone-500">
+            Sayımda bulunan miktar ile olması gereken arasındaki fark. Eksi değer fire, kayıp ya da
+            girilmemiş satış demektir.
+          </p>
+        </Card>
       )}
 
       {byDate.length === 0 ? (
         <Card>
-          <Empty>
-            Bu aralıkta karşılaştırılabilir sayım yok. Eksilen miktar, iki sayım arasındaki farktan
-            hesaplanır — en az iki günlük sayım gerekir.
-          </Empty>
+          <Empty>Bu aralıkta satış kaydı yok. Stok ekranındaki “Günlük satış” sekmesinden girilir.</Empty>
         </Card>
       ) : (
         byDate.map((day) => (
           <Card key={day.date} title={formatLong(day.date)}>
             <div className="space-y-4">
               {day.stands.map(([standName, list]) => {
-                const dayTotal = list.reduce((s, r) => s + Number(r.sold_amount), 0)
+                const dayTotal = list.reduce((s, r) => s + Number(r.amount), 0)
                 return (
                   <div key={standName}>
                     <div className="flex items-baseline justify-between gap-2">
@@ -560,15 +606,11 @@ function StockHistoryTab({ data }: { data: Data }) {
                             <span className="ml-1 text-xs text-stone-400">{r.unit}</span>
                           </span>
                           <span className="flex shrink-0 items-baseline gap-3">
-                            <span className="text-xs text-stone-400">
-                              {qty(r.expected_qty)} → {qty(r.counted_qty)}
-                            </span>
-                            <span
-                              className={`w-16 text-right font-semibold tabular-nums ${
-                                Number(r.sold_qty) < 0 ? 'text-red-700' : 'text-stone-900'
-                              }`}
-                            >
-                              {qty(r.sold_qty)}
+                            {hasPrice && (
+                              <span className="text-xs text-stone-400">{money(r.amount)}</span>
+                            )}
+                            <span className="w-16 text-right font-semibold tabular-nums text-stone-900">
+                              {qty(r.quantity)}
                             </span>
                           </span>
                         </li>
@@ -581,11 +623,6 @@ function StockHistoryTab({ data }: { data: Data }) {
           </Card>
         ))
       )}
-
-      <p className="text-xs text-stone-500">
-        “Eksilen” = beklenen stok − sayılan stok, yani o gün standdan çıkan ürün. Eksi bir değer
-        girilmemiş bir transferi veya sayım hatasını gösterir.
-      </p>
     </>
   )
 }

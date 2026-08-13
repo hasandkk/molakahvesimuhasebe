@@ -107,7 +107,7 @@ export type StockTransfer = {
   created_at: string
 }
 
-/** stand_stock_report() RPC satırı */
+/** stand_stock_report() RPC satırı — bir standın bir tarihteki stok durumu */
 export type StockReportRow = {
   variant_id: string
   product_id: string
@@ -115,18 +115,40 @@ export type StockReportRow = {
   size_label: string
   unit: VariantUnit
   price: number | null
+  /** Karşılaştırmanın dayandığı son fiziki sayım; yoksa null */
   prev_date: string | null
   prev_qty: number
   transfer_in: number
   transfer_out: number
-  expected_qty: number
+  /** Son sayımdan sonra, bu tarihten ÖNCE satılan */
+  sold_before: number
+  /** Bu tarihte satılan */
+  sold_today: number
+  /** Gün başındaki teorik stok */
+  on_hand_before: number
+  /** Gün sonundaki teorik stok */
+  on_hand: number
+  /** Bu tarihte fiziki sayım yapıldıysa sayılan miktar */
   counted_qty: number | null
-  sold_qty: number | null
-  sold_amount: number | null
+  /** sayılan − teorik. Eksi = kayıp/fire */
+  variance: number | null
 }
 
-/** stock_daily_movement() RPC satırı — bir günün bir gramajdaki eksilmesi */
-export type StockMovementRow = {
+/** stock_daily_sales() RPC satırı — o gün o standda satılan */
+export type StockSaleRow = {
+  sale_date: string
+  stand_id: string
+  stand_name: string
+  variant_id: string
+  product_name: string
+  size_label: string
+  unit: VariantUnit
+  quantity: number
+  amount: number
+}
+
+/** stock_count_variance() RPC satırı — sayımın teorik stoktan sapması */
+export type StockVarianceRow = {
   count_date: string
   stand_id: string
   stand_name: string
@@ -134,14 +156,10 @@ export type StockMovementRow = {
   product_name: string
   size_label: string
   unit: VariantUnit
-  prev_date: string | null
-  prev_qty: number
-  transfer_in: number
-  transfer_out: number
-  expected_qty: number
+  on_hand: number
   counted_qty: number
-  sold_qty: number
-  sold_amount: number
+  variance: number
+  variance_amount: number
 }
 
 /** payroll() RPC satırı — bir çalışanın bir çalışma günü */

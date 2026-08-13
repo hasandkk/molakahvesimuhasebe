@@ -596,7 +596,7 @@ export default function Shifts() {
           <Card
             title="Tüm standların mesajı"
             action={
-              <Button size="sm" onClick={() => void copyText(null)} className="hidden md:inline-flex">
+              <Button size="sm" onClick={() => void copyText(null)} className="max-md:hidden">
                 {copied ? '✓ Kopyalandı' : 'Kopyala'}
               </Button>
             }

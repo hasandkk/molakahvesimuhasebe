@@ -20,11 +20,10 @@ import {
   Tabs,
 } from '../components/ui'
 
-type Tab = 'sayim' | 'transfer'
+type Tab = 'satis' | 'sayim' | 'transfer'
 
 type Data = {
   stands: Stand[]
-  /** Satırların ait olduğu stand ve tarih — ekrandaki seçimden geride kalabilir. */
   standId: string
   date: string
   rows: StockReportRow[]
@@ -50,14 +49,10 @@ async function fetchStandData(standId: string, date: string) {
 }
 
 async function load(standId: string, date: string): Promise<Data> {
-  // Stand seçiliyse üç isteği de aynı anda başlatabiliriz. Seçili değilse
-  // hangi standın raporu çekilecek stand listesinden belli olur; o liste
-  // önbellekten geldiği için ilk açılıştan sonra bekletmez.
   if (standId) {
     const [stands, rest] = await Promise.all([fetchActiveStands(), fetchStandData(standId, date)])
     return { stands, standId, date, ...rest }
   }
-
   const stands = await fetchActiveStands()
   const first = stands[0]?.id
   if (!first) return { stands, standId: '', date, rows: [], transfers: [] }
@@ -65,17 +60,12 @@ async function load(standId: string, date: string): Promise<Data> {
 }
 
 export default function Stock() {
-  const [tab, setTab] = useState<Tab>('sayim')
+  const [tab, setTab] = useState<Tab>('satis')
   const [date, setDate] = useState(today())
   const [standId, setStandId] = useState('')
   const { data, loading, error, reload } = useQuery(() => load(standId, date), [standId, date])
 
-  // Açılır listede kullanıcının seçimi anında görünsün diye ayrı tutuluyor.
   const selectedStandId = standId || data?.stands[0]?.id || ''
-
-  // Form durumu, VERİNİN ait olduğu stand+tarihe bağlı sıfırlanır. Seçime
-  // bağlansaydı, yeni veri gelmeden eski satırlarla form kurulurdu ve önceki
-  // standın sayıları yeni standda görünürdü.
   const formKey = data ? `${data.standId}|${data.date}` : 'bos'
 
   return (
@@ -104,8 +94,9 @@ export default function Stock() {
         active={tab}
         onChange={setTab}
         tabs={[
-          { id: 'sayim', label: 'Akşam sayımı' },
-          { id: 'transfer', label: 'Mal transferi' },
+          { id: 'satis', label: 'Günlük satış' },
+          { id: 'sayim', label: 'Sayım' },
+          { id: 'transfer', label: 'Transfer' },
         ]}
       />
 
@@ -118,27 +109,17 @@ export default function Stock() {
         </Card>
       )}
 
-      {/* İki sekme de bağlı kalır, etkin olmayan gizlenir: sekme değiştirince
-          girilmiş ama kaydedilmemiş sayılar kaybolmasın. */}
+      {/* Sekmeler bağlı kalır, etkin olmayan gizlenir: yazılan sayılar kaybolmasın */}
       {data && data.stands.length > 0 && (
         <>
+          <div className={tab === 'satis' ? 'space-y-4' : 'hidden'}>
+            <SalesTab key={formKey} rows={data.rows} standId={data.standId} date={data.date} onSaved={reload} />
+          </div>
           <div className={tab === 'sayim' ? 'space-y-4' : 'hidden'}>
-            <CountTab
-              key={formKey}
-              rows={data.rows}
-              standId={data.standId}
-              date={data.date}
-              onSaved={reload}
-            />
+            <CountTab key={`${formKey}-c`} rows={data.rows} standId={data.standId} date={data.date} onSaved={reload} />
           </div>
           <div className={tab === 'transfer' ? 'space-y-4' : 'hidden'}>
-            <TransferTab
-              key={`${formKey}-t`}
-              data={data}
-              standId={data.standId}
-              date={data.date}
-              onSaved={reload}
-            />
+            <TransferTab key={`${formKey}-t`} data={data} standId={data.standId} date={data.date} onSaved={reload} />
           </div>
         </>
       )}
@@ -158,6 +139,175 @@ function groupRows(rows: StockReportRow[]) {
   }
   return groups
 }
+
+/* --------------------------------------------------------- Günlük satış */
+
+function SalesTab({
+  rows,
+  standId,
+  date,
+  onSaved,
+}: {
+  rows: StockReportRow[]
+  standId: string
+  date: string
+  onSaved: () => void
+}) {
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(rows.map((r) => [r.variant_id, Number(r.sold_today) > 0 ? String(r.sold_today) : ''])),
+  )
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const groups = useMemo(() => groupRows(rows), [rows])
+  const alreadySaved = rows.some((r) => Number(r.sold_today) > 0)
+
+  const soldOf = (row: StockReportRow) => parseNumber(values[row.variant_id] ?? '')
+  const remainingOf = (row: StockReportRow) => Number(row.on_hand_before) - soldOf(row)
+
+  const total = rows.reduce((sum, r) => sum + soldOf(r) * Number(r.price ?? 0), 0)
+  const totalQty = rows.reduce((sum, r) => sum + soldOf(r), 0)
+  const hasPrice = rows.some((r) => r.price !== null)
+
+  async function save() {
+    setBusy(true)
+    setError(null)
+
+    const payload: Record<string, unknown> = { sale_date: date, stand_id: standId }
+    if (note.trim()) payload.note = note.trim()
+
+    const { data: sale, error: saleError } = await supabase
+      .from('stock_sales')
+      .upsert(payload, { onConflict: 'sale_date,stand_id' })
+      .select('id')
+      .single()
+
+    if (saleError || !sale) {
+      setError(saleError?.message ?? 'Satış kaydedilemedi.')
+      setBusy(false)
+      return
+    }
+
+    // Boş bırakılan gramaj "o gün satılmadı" demektir; 0 yazmak doğrudur.
+    const items = rows.map((row) => ({
+      sale_id: sale.id as string,
+      variant_id: row.variant_id,
+      quantity: soldOf(row),
+    }))
+
+    const { error: itemsError } = await supabase
+      .from('stock_sale_items')
+      .upsert(items, { onConflict: 'sale_id,variant_id' })
+
+    if (itemsError) setError(itemsError.message)
+    else {
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+      onSaved()
+    }
+    setBusy(false)
+  }
+
+  if (rows.length === 0) {
+    return (
+      <Card>
+        <Empty>Ürün tanımlı değil. “Tanımlar &gt; Ürünler” ekranından kahve çeşidi ekle.</Empty>
+      </Card>
+    )
+  }
+
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3">
+        <Stat label="Bugün satılan" value={`${qty(totalQty)} kalem`} />
+        <Stat
+          label="Tutar"
+          value={hasPrice ? money(total) : '—'}
+          sub={hasPrice ? undefined : 'önce ürün fiyatı gir'}
+        />
+      </div>
+
+      <Card
+        title={alreadySaved ? 'Günlük satış (kayıtlı)' : 'Günlük satış'}
+        action={
+          <Button size="sm" onClick={() => void save()} disabled={busy} className="max-md:hidden">
+            {saved ? '✓ Kaydedildi' : 'Kaydet'}
+          </Button>
+        }
+      >
+        {error && (
+          <div className="mb-3">
+            <ErrorBox message={error} />
+          </div>
+        )}
+
+        <div className="space-y-5">
+          {groups.map((group) => (
+            <div key={group.productId}>
+              <h3 className="mb-2 text-sm font-semibold text-stone-800">{group.productName}</h3>
+              <div className="space-y-2">
+                {group.rows.map((row) => {
+                  const remaining = remainingOf(row)
+                  return (
+                    <div
+                      key={row.variant_id}
+                      className="flex items-center gap-3 rounded-xl border border-stone-200 p-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-stone-800">
+                          {row.size_label}
+                          <span className="ml-1 text-xs font-normal text-stone-400">{row.unit}</span>
+                        </div>
+                        <div className="text-xs text-stone-500">
+                          Elde <span className="tabular-nums">{qty(row.on_hand_before)}</span> ·
+                          kalan{' '}
+                          <span className={`tabular-nums ${remaining < 0 ? 'text-red-700' : ''}`}>
+                            {qty(remaining)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="w-28 shrink-0">
+                        <span className="mb-1 block text-right text-[11px] font-medium text-stone-600">
+                          Satılan
+                        </span>
+                        <Input
+                          inputMode="decimal"
+                          className="py-2 text-right text-lg font-semibold"
+                          placeholder="0"
+                          value={values[row.variant_id] ?? ''}
+                          onChange={(e) => setValues((v) => ({ ...v, [row.variant_id]: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <Field label="Not" className="mt-4">
+          <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="İsteğe bağlı" />
+        </Field>
+
+        <p className="mt-3 text-xs text-stone-500">
+          Buraya o gün <strong>satılan</strong> miktarı yaz; stok kendiliğinden düşer. Toplam stoğu
+          saymak zorunda değilsin — sayımı ara sıra “Sayım” sekmesinden kontrol amaçlı yaparsın.
+        </p>
+      </Card>
+
+      <StickyBar>
+        <Button className="w-full" onClick={() => void save()} disabled={busy}>
+          {saved ? '✓ Kaydedildi' : `Satışı kaydet${hasPrice ? ` · ${money(total)}` : ''}`}
+        </Button>
+      </StickyBar>
+    </>
+  )
+}
+
+/* ---------------------------------------------------------------- Sayım */
 
 function CountTab({
   rows,
@@ -180,39 +330,24 @@ function CountTab({
 
   const groups = useMemo(() => groupRows(rows), [rows])
   const prevDate = rows.find((r) => r.prev_date)?.prev_date ?? null
-  const alreadyCounted = rows.some((r) => r.counted_qty !== null)
 
-  /**
-   * Karşılaştırma tabanı yoksa "beklenen" diye bir şey yoktur. Bu durumda
-   * beklenen 0 ve eksilen eksi bir sayı göstermek yanıltıcı olur — ilk sayımda
-   * tam olarak bu oluyordu.
-   */
+  /** Taban yoksa (ilk sayım, öncesinde hareket de yok) fark hesaplanamaz. */
   const hasBaseline = (row: StockReportRow) =>
     row.prev_date !== null || Number(row.transfer_in) !== 0 || Number(row.transfer_out) !== 0
 
-  const soldOf = (row: StockReportRow) => {
+  const varianceOf = (row: StockReportRow) => {
     if (!hasBaseline(row)) return null
     const raw = values[row.variant_id] ?? ''
-    return raw === '' ? null : Number(row.expected_qty) - parseNumber(raw)
+    return raw === '' ? null : parseNumber(raw) - Number(row.on_hand)
   }
-
-  const netTransferOf = (row: StockReportRow) => Number(row.transfer_in) - Number(row.transfer_out)
 
   const filledRows = rows.filter((r) => (values[r.variant_id] ?? '') !== '')
   const isFirstCount = rows.length > 0 && !rows.some(hasBaseline)
 
-  const estimated = useMemo(() => {
-    let total = 0
-    for (const row of rows) {
-      const sold = soldOf(row)
-      if (sold === null) continue
-      total += sold * Number(row.price ?? 0)
-    }
-    return total
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, values])
-
-  const hasPrice = rows.some((r) => r.price !== null)
+  const varianceAmount = rows.reduce((sum, r) => {
+    const v = varianceOf(r)
+    return v === null ? sum : sum + v * Number(r.price ?? 0)
+  }, 0)
 
   async function save() {
     if (filledRows.length === 0) {
@@ -222,13 +357,12 @@ function CountTab({
     setBusy(true)
     setError(null)
 
-    // Not boşsa gönderme: eski notu silmesin.
-    const countPayload: Record<string, unknown> = { count_date: date, stand_id: standId }
-    if (note.trim()) countPayload.note = note.trim()
+    const payload: Record<string, unknown> = { count_date: date, stand_id: standId }
+    if (note.trim()) payload.note = note.trim()
 
     const { data: countRow, error: countError } = await supabase
       .from('stock_counts')
-      .upsert(countPayload, { onConflict: 'count_date,stand_id' })
+      .upsert(payload, { onConflict: 'count_date,stand_id' })
       .select('id')
       .single()
 
@@ -238,8 +372,6 @@ function CountTab({
       return
     }
 
-    // SADECE doldurulmuş gramajlar yazılır. Boş bırakılanlar 0 olarak
-    // kaydedilirse stok sessizce sıfırlanır — eskiden tam olarak bu oluyordu.
     const items = filledRows.map((row) => ({
       count_id: countRow.id as string,
       variant_id: row.variant_id,
@@ -259,13 +391,7 @@ function CountTab({
     setBusy(false)
   }
 
-  if (rows.length === 0) {
-    return (
-      <Card>
-        <Empty>Ürün tanımlı değil. “Tanımlar &gt; Ürünler” ekranından kahve çeşidi ekle.</Empty>
-      </Card>
-    )
-  }
+  if (rows.length === 0) return null
 
   return (
     <>
@@ -273,27 +399,28 @@ function CountTab({
         <Stat
           label="Önceki sayım"
           value={prevDate ? formatShort(prevDate) : 'Yok'}
-          sub={prevDate ? 'beklenen stok buna göre' : 'karşılaştırma yapılamıyor'}
+          sub={prevDate ? 'teorik stok buna göre' : 'ilk sayım'}
         />
         <Stat
-          label="Tahmini satış"
-          value={hasPrice ? money(estimated) : '—'}
-          sub={hasPrice ? 'fark × fiyat' : 'önce ürün fiyatı gir'}
+          label="Fark tutarı"
+          value={money(varianceAmount)}
+          tone={varianceAmount < 0 ? 'bad' : varianceAmount > 0 ? 'warn' : 'good'}
+          sub="eksi = kayıp"
         />
       </div>
 
       {isFirstCount && (
         <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm text-sky-900">
-          Bu stand için daha önce sayım yok. Girdiğin rakamlar <strong>açılış stoğu</strong> olarak
-          kaydedilir; “beklenen” ve “eksilen” bir sonraki sayımdan itibaren hesaplanır.
+          Bu stand için daha önce sayım yok. Girdiğin rakamlar <strong>başlangıç stoğu</strong> olarak
+          kaydedilir; fire/kayıp hesabı bir sonraki sayımdan itibaren çalışır.
         </div>
       )}
 
       <Card
-        title={alreadyCounted ? 'Sayım (kayıtlı)' : 'Akşam sayımı'}
+        title="Fiziki sayım"
         action={
-          <Button size="sm" onClick={() => void save()} disabled={busy} className="hidden md:inline-flex">
-            {saved ? '✓ Kaydedildi' : 'Sayımı kaydet'}
+          <Button size="sm" onClick={() => void save()} disabled={busy} className="max-md:hidden">
+            {saved ? '✓ Kaydedildi' : 'Kaydet'}
           </Button>
         }
       >
@@ -307,128 +434,63 @@ function CountTab({
           {groups.map((group) => (
             <div key={group.productId}>
               <h3 className="mb-2 text-sm font-semibold text-stone-800">{group.productName}</h3>
-
-              {/* Mobil: her gramaj için kart — yatay kaydırma yok */}
-              <div className="space-y-2 md:hidden">
+              <div className="space-y-2">
                 {group.rows.map((row) => {
-                  const sold = soldOf(row)
-                  const net = netTransferOf(row)
+                  const variance = varianceOf(row)
                   const baseline = hasBaseline(row)
                   return (
-                    <div key={row.variant_id} className="rounded-xl border border-stone-200 p-3">
-                      <div className="flex items-baseline justify-between">
-                        <span className="text-sm font-medium text-stone-800">{row.size_label}</span>
-                        <span className="text-xs text-stone-400">{row.unit}</span>
-                      </div>
-                      <div className="mt-2 flex items-end gap-3">
-                        <dl className="flex-1 space-y-0.5 text-xs text-stone-500">
+                    <div
+                      key={row.variant_id}
+                      className="flex items-center gap-3 rounded-xl border border-stone-200 p-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-stone-800">
+                          {row.size_label}
+                          <span className="ml-1 text-xs font-normal text-stone-400">{row.unit}</span>
+                        </div>
+                        <div className="text-xs text-stone-500">
                           {baseline ? (
                             <>
-                              <div className="flex justify-between gap-2">
-                                <dt>Önceki</dt>
-                                <dd className="tabular-nums">{qty(row.prev_qty)}</dd>
-                              </div>
-                              {net !== 0 && (
-                                <div className="flex justify-between gap-2">
-                                  <dt>Gelen</dt>
-                                  <dd className="tabular-nums">
-                                    {net > 0 ? '+' : ''}
-                                    {qty(net)}
-                                  </dd>
-                                </div>
-                              )}
-                              <div className="flex justify-between gap-2 font-medium text-stone-800">
-                                <dt>Beklenen</dt>
-                                <dd className="tabular-nums">{qty(row.expected_qty)}</dd>
-                              </div>
+                              Olması gereken{' '}
+                              <span className="font-medium tabular-nums text-stone-800">
+                                {qty(row.on_hand)}
+                              </span>
                             </>
                           ) : (
-                            <div className="text-stone-400">ilk sayım</div>
+                            'ilk sayım'
                           )}
-                        </dl>
-                        <div className="w-28 shrink-0">
-                          <span className="mb-1 block text-right text-[11px] font-medium text-stone-600">
-                            Sayılan
-                          </span>
-                          <Input
-                            inputMode="decimal"
-                            className="py-2 text-right text-lg font-semibold"
-                            placeholder="—"
-                            value={values[row.variant_id] ?? ''}
-                            onChange={(e) =>
-                              setValues((v) => ({ ...v, [row.variant_id]: e.target.value }))
-                            }
-                          />
-                          <span
-                            className={`mt-1 block text-right text-[11px] ${
-                              sold !== null && sold < 0 ? 'text-red-700' : 'text-stone-500'
-                            }`}
-                          >
-                            {sold === null ? ' ' : `eksilen ${qty(sold)}`}
-                          </span>
                         </div>
+                      </div>
+                      <div className="w-28 shrink-0">
+                        <span className="mb-1 block text-right text-[11px] font-medium text-stone-600">
+                          Sayılan
+                        </span>
+                        <Input
+                          inputMode="decimal"
+                          className="py-2 text-right text-lg font-semibold"
+                          placeholder="—"
+                          value={values[row.variant_id] ?? ''}
+                          onChange={(e) => setValues((v) => ({ ...v, [row.variant_id]: e.target.value }))}
+                        />
+                        <span
+                          className={`mt-1 block text-right text-[11px] ${
+                            variance !== null && variance < 0
+                              ? 'text-red-700'
+                              : variance !== null && variance > 0
+                                ? 'text-amber-700'
+                                : 'text-stone-500'
+                          }`}
+                        >
+                          {variance === null
+                            ? ' '
+                            : variance === 0
+                              ? 'tutuyor'
+                              : `${variance > 0 ? '+' : '−'}${qty(Math.abs(variance))}`}
+                        </span>
                       </div>
                     </div>
                   )
                 })}
-              </div>
-
-              {/* Masaüstü: tablo */}
-              <div className="hidden md:block">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-xs text-stone-500">
-                      <th className="pb-1 font-medium">Gramaj</th>
-                      <th className="pb-1 text-right font-medium">Önceki</th>
-                      <th className="pb-1 text-right font-medium">Gelen</th>
-                      <th className="pb-1 text-right font-medium">Beklenen</th>
-                      <th className="pb-1 text-right font-medium">Sayılan</th>
-                      <th className="pb-1 text-right font-medium">Eksilen</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100">
-                    {group.rows.map((row) => {
-                      const sold = soldOf(row)
-                      const net = netTransferOf(row)
-                      const baseline = hasBaseline(row)
-                      return (
-                        <tr key={row.variant_id}>
-                          <td className="py-1.5">
-                            {row.size_label}
-                            <span className="ml-1 text-xs text-stone-400">{row.unit}</span>
-                          </td>
-                          <td className="py-1.5 text-right tabular-nums text-stone-500">
-                            {baseline ? qty(row.prev_qty) : '—'}
-                          </td>
-                          <td className="py-1.5 text-right tabular-nums text-stone-500">
-                            {net === 0 ? '—' : qty(net)}
-                          </td>
-                          <td className="py-1.5 text-right tabular-nums font-medium">
-                            {baseline ? qty(row.expected_qty) : '—'}
-                          </td>
-                          <td className="w-24 py-1 pl-2">
-                            <Input
-                              inputMode="decimal"
-                              className="px-2 py-1.5 text-right"
-                              placeholder="—"
-                              value={values[row.variant_id] ?? ''}
-                              onChange={(e) =>
-                                setValues((v) => ({ ...v, [row.variant_id]: e.target.value }))
-                              }
-                            />
-                          </td>
-                          <td
-                            className={`py-1.5 text-right tabular-nums ${
-                              sold !== null && sold < 0 ? 'text-red-700' : 'text-stone-700'
-                            }`}
-                          >
-                            {sold === null ? '—' : qty(sold)}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
               </div>
             </div>
           ))}
@@ -439,20 +501,21 @@ function CountTab({
         </Field>
 
         <p className="mt-3 text-xs text-stone-500">
-          Boş bıraktığın gramajlar <strong>değiştirilmez</strong> — kayıtlı değerleri korunur.
-          {!isFirstCount &&
-            ' “Eksilen” = beklenen − sayılan; normalde satılan miktardır. Eksi çıkarsa girilmemiş bir transfer veya sayım hatası vardır.'}
+          Boş bıraktığın gramajlar <strong>değiştirilmez</strong>. Fark = sayılan − olması gereken;
+          eksi çıkarsa fire, kayıp ya da girilmemiş bir satış vardır.
         </p>
       </Card>
 
       <StickyBar>
         <Button className="w-full" onClick={() => void save()} disabled={busy}>
-          {saved ? '✓ Kaydedildi' : `Sayımı kaydet (${filledRows.length}/${rows.length} gramaj)`}
+          {saved ? '✓ Kaydedildi' : `Sayımı kaydet (${filledRows.length}/${rows.length})`}
         </Button>
       </StickyBar>
     </>
   )
 }
+
+/* ------------------------------------------------------------- Transfer */
 
 function TransferTab({
   data,
@@ -530,7 +593,7 @@ function TransferTab({
       <Card
         title="Yeni transfer"
         action={
-          <Button size="sm" onClick={() => void save()} disabled={busy} className="hidden md:inline-flex">
+          <Button size="sm" onClick={() => void save()} disabled={busy} className="max-md:hidden">
             Kaydet
           </Button>
         }

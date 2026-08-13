@@ -344,6 +344,39 @@ create table if not exists public.stock_count_items (
 create index if not exists stock_count_items_variant_idx on public.stock_count_items (variant_id);
 
 -- ---------------------------------------------------------------------
+-- stock_sales / stock_sale_items — GÜNLÜK SATIŞ
+--   Asıl günlük veri girişi budur: "bugün 250g'den 5 tane sattık".
+--   Stok bundan düşülerek hesaplanır. Sayım (stock_counts) ise ara sıra
+--   yapılan fiziki kontroldür; teorik stokla tutmuyorsa fark fire/kayıptır.
+-- ---------------------------------------------------------------------
+create table if not exists public.stock_sales (
+  id          uuid primary key default gen_random_uuid(),
+  sale_date   date not null,
+  stand_id    uuid not null references public.stands(id) on delete cascade,
+  note        text,
+  created_by  uuid references auth.users(id) default auth.uid(),
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  unique (sale_date, stand_id)
+);
+create index if not exists stock_sales_date_idx on public.stock_sales (sale_date);
+create index if not exists stock_sales_stand_idx on public.stock_sales (stand_id);
+
+drop trigger if exists stock_sales_updated_at on public.stock_sales;
+create trigger stock_sales_updated_at
+  before update on public.stock_sales
+  for each row execute function public.set_updated_at();
+
+create table if not exists public.stock_sale_items (
+  id          uuid primary key default gen_random_uuid(),
+  sale_id     uuid not null references public.stock_sales(id) on delete cascade,
+  variant_id  uuid not null references public.product_variants(id) on delete cascade,
+  quantity    numeric(12,3) not null default 0 check (quantity >= 0),
+  unique (sale_id, variant_id)
+);
+create index if not exists stock_sale_items_variant_idx on public.stock_sale_items (variant_id);
+
+-- ---------------------------------------------------------------------
 -- stock_transfers / items — depodan standa mal çıkışı, standdan iade
 --   direction 'in'  => standa giren mal
 --   direction 'out' => standdan çıkan / iade edilen mal
@@ -371,25 +404,37 @@ create index if not exists stock_transfer_items_variant_idx on public.stock_tran
 
 -- ---------------------------------------------------------------------
 -- stand_stock_report(stand, tarih)
---   Bir önceki sayım + aradaki transferler = beklenen stok.
---   Beklenen - sayılan = o dönemde eksilen (satılan) miktar.
+--   Bir standın o tarihteki stok durumu.
+--
+--   son sayım
+--     + gelen transferler − giden transferler
+--     − o tarihe kadarki satışlar
+--     = teorik stok (on_hand)
+--
+--   O tarihte fiziki sayım da yapıldıysa variance = sayılan − teorik.
+--   Eksi çıkarsa kayıp/fire, artı çıkarsa fazla vardır.
+--
+--   Transfer ve satışlar "son sayımdan SONRA, bu tarihe kadar" alınır;
+--   sayım akşam yapıldığı için o günün satışları da dahildir.
 -- ---------------------------------------------------------------------
 create or replace function public.stand_stock_report(p_stand_id uuid, p_date date)
 returns table (
-  variant_id    uuid,
-  product_id    uuid,
-  product_name  text,
-  size_label    text,
-  unit          text,
-  price         numeric,
-  prev_date     date,
-  prev_qty      numeric,
-  transfer_in   numeric,
-  transfer_out  numeric,
-  expected_qty  numeric,
-  counted_qty   numeric,
-  sold_qty      numeric,
-  sold_amount   numeric
+  variant_id     uuid,
+  product_id     uuid,
+  product_name   text,
+  size_label     text,
+  unit           text,
+  price          numeric,
+  prev_date      date,
+  prev_qty       numeric,
+  transfer_in    numeric,
+  transfer_out   numeric,
+  sold_before    numeric,
+  sold_today     numeric,
+  on_hand_before numeric,
+  on_hand        numeric,
+  counted_qty    numeric,
+  variance       numeric
 )
 language sql
 stable
@@ -404,19 +449,16 @@ as $$
     limit 1
   ),
   cur as (
-    select sc.id
-    from public.stock_counts sc
+    select sc.id from public.stock_counts sc
     where sc.stand_id = p_stand_id and sc.count_date = p_date
   ),
   prev_items as (
     select i.variant_id, i.quantity
-    from public.stock_count_items i
-    join prev on i.count_id = prev.id
+    from public.stock_count_items i join prev on i.count_id = prev.id
   ),
   cur_items as (
     select i.variant_id, i.quantity
-    from public.stock_count_items i
-    join cur on i.count_id = cur.id
+    from public.stock_count_items i join cur on i.count_id = cur.id
   ),
   moves as (
     select ti.variant_id,
@@ -428,6 +470,17 @@ as $$
       and t.transfer_date > coalesce((select p.count_date from prev p), '-infinity'::date)
       and t.transfer_date <= p_date
     group by ti.variant_id
+  ),
+  sales as (
+    select si.variant_id,
+           sum(case when s.sale_date < p_date then si.quantity else 0 end) as before_today,
+           sum(case when s.sale_date = p_date then si.quantity else 0 end) as on_day
+    from public.stock_sales s
+    join public.stock_sale_items si on si.sale_id = s.id
+    where s.stand_id = p_stand_id
+      and s.sale_date > coalesce((select p.count_date from prev p), '-infinity'::date)
+      and s.sale_date <= p_date
+    group by si.variant_id
   )
   select
     v.id,
@@ -436,41 +489,87 @@ as $$
     v.size_label,
     v.unit,
     v.price,
-    (select pr.count_date from prev pr)                                        as prev_date,
-    coalesce(pi.quantity, 0)                                                   as prev_qty,
-    coalesce(m.tin, 0)                                                         as transfer_in,
-    coalesce(m.tout, 0)                                                        as transfer_out,
-    coalesce(pi.quantity, 0) + coalesce(m.tin, 0) - coalesce(m.tout, 0)        as expected_qty,
-    ci.quantity                                                                as counted_qty,
+    (select pr.count_date from prev pr),
+    coalesce(pi.quantity, 0),
+    coalesce(m.tin, 0),
+    coalesce(m.tout, 0),
+    coalesce(sl.before_today, 0),
+    coalesce(sl.on_day, 0),
+    coalesce(pi.quantity, 0) + coalesce(m.tin, 0) - coalesce(m.tout, 0)
+      - coalesce(sl.before_today, 0)                                          as on_hand_before,
+    coalesce(pi.quantity, 0) + coalesce(m.tin, 0) - coalesce(m.tout, 0)
+      - coalesce(sl.before_today, 0) - coalesce(sl.on_day, 0)                 as on_hand,
+    ci.quantity                                                               as counted_qty,
     case when ci.quantity is null then null
-         else coalesce(pi.quantity, 0) + coalesce(m.tin, 0) - coalesce(m.tout, 0) - ci.quantity
-    end                                                                        as sold_qty,
-    case when ci.quantity is null then null
-         else (coalesce(pi.quantity, 0) + coalesce(m.tin, 0) - coalesce(m.tout, 0) - ci.quantity)
-              * coalesce(v.price, 0)
-    end                                                                        as sold_amount
+         else ci.quantity - (coalesce(pi.quantity, 0) + coalesce(m.tin, 0) - coalesce(m.tout, 0)
+                             - coalesce(sl.before_today, 0) - coalesce(sl.on_day, 0))
+    end                                                                       as variance
   from public.product_variants v
   join public.products p on p.id = v.product_id
   left join prev_items pi on pi.variant_id = v.id
   left join cur_items  ci on ci.variant_id = v.id
   left join moves      m  on m.variant_id  = v.id
+  left join sales      sl on sl.variant_id = v.id
   where v.is_active and p.is_active
   order by p.sort_order, p.name, v.sort_order, v.size_label;
 $$;
 
 -- ---------------------------------------------------------------------
--- stock_daily_movement(baslangic, bitis, stand)
---   Bir tarih aralığındaki HER sayım için o güne ait eksilen miktarı verir.
---   stand_stock_report tek gün/tek stand içindir; bu geriye dönük döküm için.
---
---   Her sayım kendinden önceki sayımla karşılaştırılır (lag). Aralığın ilk
---   gününün karşılaştırması aralıktan önceki sayıma göre yapılabilsin diye
---   temel CTE tarihe göre süzülmez, süzme en sonda yapılır.
---
---   Karşılaştırma tabanı olmayan satırlar (ilk sayım, öncesinde transfer de
---   yoksa) döndürülmez — orada "eksilen" diye bir kavram yoktur.
+-- stock_daily_sales(baslangic, bitis, stand)
+--   "Hangi gün hangi standda hangi gramajdan kaç tane satıldı."
+--   Doğrudan girilen satış kayıtlarından gelir; iki sayım arasındaki farka
+--   dayanmaz, o yüzden her gün sayım yapılmasa da doğrudur.
 -- ---------------------------------------------------------------------
-create or replace function public.stock_daily_movement(
+drop function if exists public.stock_daily_movement(date, date, uuid);
+
+create or replace function public.stock_daily_sales(
+  p_from date,
+  p_to date,
+  p_stand_id uuid default null
+)
+returns table (
+  sale_date     date,
+  stand_id      uuid,
+  stand_name    text,
+  variant_id    uuid,
+  product_name  text,
+  size_label    text,
+  unit          text,
+  quantity      numeric,
+  amount        numeric
+)
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  select
+    s.sale_date,
+    s.stand_id,
+    st.name,
+    si.variant_id,
+    p.name,
+    v.size_label,
+    v.unit,
+    si.quantity,
+    si.quantity * coalesce(v.price, 0)
+  from public.stock_sales s
+  join public.stock_sale_items si on si.sale_id = s.id
+  join public.stands st           on st.id = s.stand_id
+  join public.product_variants v  on v.id = si.variant_id
+  join public.products p          on p.id = v.product_id
+  where s.sale_date between p_from and p_to
+    and (p_stand_id is null or s.stand_id = p_stand_id)
+    and si.quantity > 0
+  order by s.sale_date desc, st.sort_order, st.name, p.sort_order, v.sort_order;
+$$;
+
+-- ---------------------------------------------------------------------
+-- stock_count_variance(baslangic, bitis, stand)
+--   Fiziki sayımların teorik stoktan sapması — fire/kayıp takibi.
+--   Eksi değer stokta olması gerekenden az bulunduğunu gösterir.
+-- ---------------------------------------------------------------------
+create or replace function public.stock_count_variance(
   p_from date,
   p_to date,
   p_stand_id uuid default null
@@ -483,77 +582,40 @@ returns table (
   product_name  text,
   size_label    text,
   unit          text,
-  prev_date     date,
-  prev_qty      numeric,
-  transfer_in   numeric,
-  transfer_out  numeric,
-  expected_qty  numeric,
+  on_hand       numeric,
   counted_qty   numeric,
-  sold_qty      numeric,
-  sold_amount   numeric
+  variance      numeric,
+  variance_amount numeric
 )
 language sql
 stable
 security invoker
 set search_path = public
 as $$
-  with sayimlar as (
-    select
-      sc.id,
-      sc.stand_id,
-      sc.count_date,
-      lag(sc.id)         over (partition by sc.stand_id order by sc.count_date) as prev_id,
-      lag(sc.count_date) over (partition by sc.stand_id order by sc.count_date) as prev_date
-    from public.stock_counts sc
-    where p_stand_id is null or sc.stand_id = p_stand_id
-  ),
-  kalemler as (
-    select s.id as count_id, s.stand_id, s.count_date, s.prev_id, s.prev_date,
-           i.variant_id, i.quantity as counted
-    from sayimlar s
-    join public.stock_count_items i on i.count_id = s.id
-  ),
-  hareketler as (
-    select t.stand_id, ti.variant_id, t.transfer_date,
-           sum(case when t.direction = 'in'  then ti.quantity else 0 end) as tin,
-           sum(case when t.direction = 'out' then ti.quantity else 0 end) as tout
-    from public.stock_transfers t
-    join public.stock_transfer_items ti on ti.transfer_id = t.id
-    group by t.stand_id, ti.variant_id, t.transfer_date
-  )
   select
-    k.count_date,
-    k.stand_id,
+    c.count_date,
+    c.stand_id,
     st.name,
-    k.variant_id,
-    p.name,
-    v.size_label,
-    v.unit,
-    k.prev_date,
-    coalesce(pi.quantity, 0),
-    m.tin,
-    m.tout,
-    coalesce(pi.quantity, 0) + m.tin - m.tout                                   as expected_qty,
-    k.counted,
-    coalesce(pi.quantity, 0) + m.tin - m.tout - k.counted                       as sold_qty,
-    (coalesce(pi.quantity, 0) + m.tin - m.tout - k.counted) * coalesce(v.price, 0) as sold_amount
-  from kalemler k
-  join public.stands st           on st.id = k.stand_id
-  join public.product_variants v  on v.id = k.variant_id
-  join public.products p          on p.id = v.product_id
-  left join public.stock_count_items pi
-         on pi.count_id = k.prev_id and pi.variant_id = k.variant_id
-  cross join lateral (
-    select coalesce(sum(h.tin), 0) as tin, coalesce(sum(h.tout), 0) as tout
-    from hareketler h
-    where h.stand_id = k.stand_id
-      and h.variant_id = k.variant_id
-      and h.transfer_date > coalesce(k.prev_date, '-infinity'::date)
-      and h.transfer_date <= k.count_date
-  ) m
-  where k.count_date between p_from and p_to
-    and (k.prev_date is not null or m.tin <> 0 or m.tout <> 0)
-  order by k.count_date desc, st.sort_order, st.name, p.sort_order, v.sort_order;
+    r.variant_id,
+    r.product_name,
+    r.size_label,
+    r.unit,
+    r.on_hand,
+    r.counted_qty,
+    r.variance,
+    r.variance * coalesce(r.price, 0)
+  from public.stock_counts c
+  join public.stands st on st.id = c.stand_id
+  cross join lateral public.stand_stock_report(c.stand_id, c.count_date) r
+  where c.count_date between p_from and p_to
+    and (p_stand_id is null or c.stand_id = p_stand_id)
+    and r.counted_qty is not null
+    and r.variance is not null
+    and r.variance <> 0
+    -- Karşılaştırma tabanı olmadan fire hesaplanamaz: bir standın İLK sayımı
+    -- baz oluşturur, sapma değildir. Öncesinde sayım ya da transfer olmalı.
+    and (r.prev_date is not null or r.transfer_in <> 0 or r.transfer_out <> 0)
+  order by c.count_date desc, st.sort_order, st.name;
 $$;
 
 -- ---------------------------------------------------------------------
@@ -622,7 +684,8 @@ declare
     'stands', 'employees', 'products', 'product_variants',
     'shift_assignments', 'daily_revenues', 'cash_movements', 'cash_counts',
     'stock_counts', 'stock_count_items', 'stock_transfers', 'stock_transfer_items',
-    'payroll_settings', 'employee_bonuses'
+    'payroll_settings', 'employee_bonuses',
+    'stock_sales', 'stock_sale_items'
   ];
 begin
   foreach t in array tables loop

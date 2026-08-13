@@ -10,8 +10,8 @@ React + Vite + TypeScript + Tailwind, arka planda Supabase (Postgres + Auth).
 | **Özet**     | Bugünkü ciro, aylık ciro, kasadaki nakit, yarınki vardiya durumu, ciro/sayım girilmemiş standlar |
 | **Vardiya**  | **Gün** görünümünde plan yapılır, **Hafta** görünümünde tüm hafta tek ekranda görülür. Standart vardiyalar 08:00–15:30 ve 15:30–23:00; saatler değiştirilebilir. Aynı vardiyada birden fazla kişi çalışabilir, eğitime gelenler ayrı tür olarak yazılır. Saat çakışması uyarı verir. Mesaj stand bazlı veya toplu kopyalanır |
 | **Kasa**     | Stand bazlı gün sonu nakit/POS girişi · para çekme, gider, kasaya giriş, bankaya yatırma hareketleri · fiziki kasa sayımı ve açık/fazla tespiti |
-| **Stok**     | Akşam sayımı (100g/250g/500g/1kg/dökme) · depodan standa mal transferi · beklenen–sayılan farkı ve tahmini satış tutarı |
-| **Raporlar** | Üç sekme: **Özet** (stand bazlı ciro, kim ne kadar çekti, gider kalemleri) · **Vardiya geçmişi** (gün gün kim hangi standda, hangi saatte; çalışana göre süzülebilir) · **Stok geçmişi** (hangi gün hangi standda hangi üründen ne kadar eksildi) · **Maaş** (kademeli yevmiye + yemek + prim hesabı) |
+| **Stok**     | **Günlük satış** girişi (asıl günlük iş) · **Sayım** ile ara sıra fiziki kontrol ve fire/kayıp tespiti · depodan standa **transfer** |
+| **Raporlar** | Üç sekme: **Özet** (stand bazlı ciro, kim ne kadar çekti, gider kalemleri) · **Vardiya geçmişi** (gün gün kim hangi standda, hangi saatte; çalışana göre süzülebilir) · **Satış geçmişi** (hangi gün hangi standda ne satıldı + sayım farkları) · **Maaş** (kademeli yevmiye + yemek + prim hesabı) |
 | **Tanımlar** | Stand, çalışan ve kahve çeşidi/fiyat yönetimi |
 
 Stand sayısı sabit değil — “Tanımlar” ekranından istediğin kadar stand ekler,
@@ -19,14 +19,25 @@ kullanmadığını pasifleştirirsin. Tüm ekranlar aktif standları otomatik ta
 
 ### Stok mantığı
 
+Günlük iş **satış girmektir**, stok saymak değil:
+
 ```
-beklenen stok = bir önceki sayım + aradaki giren transferler − çıkan transferler
-eksilen       = beklenen − bu akşamki sayım        (normalde satılan miktar)
-tahmini ciro  = Σ (eksilen × ürün fiyatı)
+teorik stok = son fiziki sayım
+              + gelen transferler − giden transferler
+              − o tarihe kadarki satışlar
 ```
 
-“Eksilen” eksi çıkıyorsa girilmemiş bir transfer ya da sayım hatası vardır.
-Tahmini ciroyu o günün gerçek nakit+POS toplamıyla karşılaştırarak açığı görebilirsin.
+Her akşam “Günlük satış” sekmesinden o gün kaç sattığını yazarsın; stok
+kendiliğinden düşer. Toplam stoğu her gün saymana gerek yok.
+
+**Sayım** ara sıra yapılan fiziki kontroldür:
+
+```
+fark = sayılan − teorik stok      (eksi = fire / kayıp / girilmemiş satış)
+```
+
+Bir standın ilk sayımı baz oluşturur, sapma sayılmaz — öncesinde
+karşılaştıracak bir şey yoktur.
 
 ### Vardiya mantığı
 
