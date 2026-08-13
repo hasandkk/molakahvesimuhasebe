@@ -1,14 +1,18 @@
+import { lazy } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
 import { useAuth } from './lib/auth'
 import { supabaseConfigured } from './lib/supabase'
 import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
-import Shifts from './pages/Shifts'
-import Cash from './pages/Cash'
-import Stock from './pages/Stock'
-import Reports from './pages/Reports'
-import Settings from './pages/Settings'
+
+// Sayfalar ayrı paketlere bölünüyor: ilk açılışta sadece Özet ekranının
+// kodu iniyor, diğerleri o sekmeye geçildiğinde yükleniyor.
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Shifts = lazy(() => import('./pages/Shifts'))
+const Cash = lazy(() => import('./pages/Cash'))
+const Stock = lazy(() => import('./pages/Stock'))
+const Reports = lazy(() => import('./pages/Reports'))
+const Settings = lazy(() => import('./pages/Settings'))
 
 export default function App() {
   const { session, loading } = useAuth()
@@ -36,6 +40,7 @@ export default function App() {
 
   return (
     <Routes>
+      {/* Suspense sınırı Layout içinde; sayfa paketi inerken menü ekranda kalır. */}
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />
         <Route path="vardiya" element={<Shifts />} />

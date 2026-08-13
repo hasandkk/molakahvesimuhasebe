@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useQuery } from '../lib/useQuery'
+import { fetchActiveStands } from '../lib/refData'
 import { formatLong, startOfMonth, today, tomorrow } from '../lib/date'
 import { money } from '../lib/format'
 import type { Stand } from '../lib/types'
@@ -25,7 +26,7 @@ async function load(): Promise<Data> {
   const monthStart = startOfMonth(day)
 
   const [stands, monthRevenues, summary, shifts, counts] = await Promise.all([
-    supabase.from('stands').select('*').eq('is_active', true).order('sort_order').order('name'),
+    fetchActiveStands(),
     supabase
       .from('daily_revenues')
       .select('business_date, stand_id, cash_amount, pos_amount')
@@ -36,7 +37,7 @@ async function load(): Promise<Data> {
     supabase.from('stock_counts').select('stand_id').eq('count_date', day),
   ])
 
-  const err = stands.error ?? monthRevenues.error ?? summary.error ?? shifts.error ?? counts.error
+  const err = monthRevenues.error ?? summary.error ?? shifts.error ?? counts.error
   if (err) throw err
 
   const rows = monthRevenues.data ?? []
@@ -51,7 +52,7 @@ async function load(): Promise<Data> {
     target.set(row.stand_id, (target.get(row.stand_id) ?? 0) + 1)
   }
 
-  const standList = (stands.data ?? []) as Stand[]
+  const standList = stands
   const summaryRow = Array.isArray(summary.data) ? (summary.data[0] as { cash_balance: number } | undefined) : null
 
   return {

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useQuery } from '../lib/useQuery'
+import { fetchActiveEmployees, fetchActiveStands } from '../lib/refData'
 import { addDays, formatLong, tomorrow } from '../lib/date'
 import { SHIFT_PRESETS, type Employee, type ShiftAssignment, type Stand } from '../lib/types'
-import { Button, Card, DateNav, Empty, ErrorBox, Select, Spinner, Tabs } from '../components/ui'
+import { Button, Card, DateNav, Empty, ErrorBox, Select, Spinner, Tabs, TimeInput } from '../components/ui'
 
 type Data = { stands: Stand[]; employees: Employee[]; assignments: ShiftAssignment[] }
 type PresetId = (typeof SHIFT_PRESETS)[number]['id'] | 'ozel' | 'egitim'
@@ -14,17 +15,26 @@ const hhmm = (time: string | null) => (time ? time.slice(0, 5) : '')
 
 async function load(date: string): Promise<Data> {
   const [stands, employees, assignments] = await Promise.all([
-    supabase.from('stands').select('*').eq('is_active', true).order('sort_order').order('name'),
-    supabase.from('employees').select('*').eq('is_active', true).order('full_name'),
+    fetchActiveStands(),
+    fetchActiveEmployees(),
     supabase.from('shift_assignments').select('*').eq('work_date', date),
   ])
-  const err = stands.error ?? employees.error ?? assignments.error
-  if (err) throw err
+  if (assignments.error) throw assignments.error
   return {
-    stands: (stands.data ?? []) as Stand[],
-    employees: (employees.data ?? []) as Employee[],
+    stands,
+    employees,
     assignments: (assignments.data ?? []) as ShiftAssignment[],
   }
+}
+
+/** Sekme etiketi: üstte ad, altta saat aralığı — dar ekranda taşmaz. */
+function TabLabel({ title, sub }: { title: string; sub?: string }) {
+  return (
+    <span className="flex flex-col leading-tight">
+      <span>{title}</span>
+      {sub && <span className="text-[10px] font-normal opacity-70">{sub}</span>}
+    </span>
+  )
 }
 
 export default function Shifts() {
@@ -208,9 +218,6 @@ export default function Shifts() {
     }
   }
 
-  const timeInputClass =
-    'rounded-lg border border-stone-300 bg-white px-2 py-1 text-xs tabular-nums text-stone-800 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20'
-
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -237,27 +244,17 @@ export default function Shifts() {
           active={preset}
           onChange={setPreset}
           tabs={[
-            { id: 'sabah' as PresetId, label: 'Sabah 08:00–15:30' },
-            { id: 'aksam' as PresetId, label: 'Akşam 15:30–23:00' },
-            { id: 'ozel' as PresetId, label: 'Özel saat' },
-            { id: 'egitim' as PresetId, label: 'Eğitim' },
+            { id: 'sabah' as PresetId, label: <TabLabel title="Sabah" sub="08:00–15:30" /> },
+            { id: 'aksam' as PresetId, label: <TabLabel title="Akşam" sub="15:30–23:00" /> },
+            { id: 'ozel' as PresetId, label: <TabLabel title="Özel saat" /> },
+            { id: 'egitim' as PresetId, label: <TabLabel title="Eğitim" /> },
           ]}
         />
         {preset === 'ozel' && (
           <div className="mt-3 flex items-center gap-2">
-            <input
-              type="time"
-              value={customStart}
-              onChange={(e) => setCustomStart(e.target.value)}
-              className={timeInputClass}
-            />
+            <TimeInput value={customStart} onChange={(e) => setCustomStart(e.target.value)} />
             <span className="text-stone-400">–</span>
-            <input
-              type="time"
-              value={customEnd}
-              onChange={(e) => setCustomEnd(e.target.value)}
-              className={timeInputClass}
-            />
+            <TimeInput value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} />
           </div>
         )}
         <p className="mt-2 text-xs text-stone-500">
@@ -314,7 +311,7 @@ export default function Shifts() {
                         </span>
                         <Button
                           variant="ghost"
-                          size="sm"
+                          size="icon"
                           onClick={() => void removeAssignment(a.id)}
                           disabled={busy}
                           aria-label="Çıkar"
@@ -323,19 +320,15 @@ export default function Shifts() {
                         </Button>
                       </div>
                       <div className="mt-1 flex items-center gap-1.5">
-                        <input
-                          type="time"
+                        <TimeInput
                           value={t.start}
                           onChange={(e) => void changeTime(a, 'start', e.target.value)}
-                          className={timeInputClass}
                           aria-label="Başlangıç saati"
                         />
                         <span className="text-stone-400">–</span>
-                        <input
-                          type="time"
+                        <TimeInput
                           value={t.end}
                           onChange={(e) => void changeTime(a, 'end', e.target.value)}
-                          className={timeInputClass}
                           aria-label="Bitiş saati"
                         />
                         {isTraining && !t.start && !t.end && (

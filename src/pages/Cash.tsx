@@ -1,10 +1,24 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useQuery } from '../lib/useQuery'
+import { fetchActiveStands } from '../lib/refData'
 import { formatLong, formatShort, today } from '../lib/date'
 import { money, parseNumber } from '../lib/format'
 import { MOVEMENT_LABELS, type CashCount, type CashMovement, type CashMovementType, type DailyRevenue, type Stand } from '../lib/types'
-import { Button, Card, DateNav, Empty, ErrorBox, Field, Input, Select, Spinner, Stat, Tabs } from '../components/ui'
+import {
+  Button,
+  Card,
+  DateNav,
+  Empty,
+  ErrorBox,
+  Field,
+  Input,
+  Select,
+  Spinner,
+  Stat,
+  StickyBar,
+  Tabs,
+} from '../components/ui'
 
 type Tab = 'ciro' | 'hareket' | 'sayim'
 
@@ -29,20 +43,20 @@ type Data = {
 
 async function load(date: string): Promise<Data> {
   const [stands, revenues, movements, counts, summary, expected] = await Promise.all([
-    supabase.from('stands').select('*').eq('is_active', true).order('sort_order').order('name'),
+    fetchActiveStands(),
     supabase.from('daily_revenues').select('*').eq('business_date', date),
     supabase.from('cash_movements').select('*').order('movement_date', { ascending: false }).order('created_at', { ascending: false }).limit(50),
     supabase.from('cash_counts').select('*').order('count_date', { ascending: false }).limit(20),
     supabase.rpc('cash_summary'),
     supabase.rpc('cash_balance_until', { p_date: date }),
   ])
-  const err = stands.error ?? revenues.error ?? movements.error ?? counts.error ?? summary.error ?? expected.error
+  const err = revenues.error ?? movements.error ?? counts.error ?? summary.error ?? expected.error
   if (err) throw err
 
   const summaryRow = Array.isArray(summary.data) ? (summary.data[0] as Summary | undefined) : null
 
   return {
-    stands: (stands.data ?? []) as Stand[],
+    stands,
     revenues: (revenues.data ?? []) as DailyRevenue[],
     movements: (movements.data ?? []) as CashMovement[],
     counts: (counts.data ?? []) as CashCount[],
@@ -145,7 +159,12 @@ export default function Cash() {
         <Card
           title="Stand bazlı gün sonu cirosu"
           action={
-            <Button size="sm" onClick={() => void saveRevenues()} disabled={busy}>
+            <Button
+              size="sm"
+              onClick={() => void saveRevenues()}
+              disabled={busy}
+              className="hidden md:inline-flex"
+            >
               {saved ? '✓ Kaydedildi' : 'Kaydet'}
             </Button>
           }
@@ -188,6 +207,14 @@ export default function Cash() {
             </div>
           )}
         </Card>
+      )}
+
+      {data && tab === 'ciro' && data.stands.length > 0 && (
+        <StickyBar>
+          <Button className="w-full" onClick={() => void saveRevenues()} disabled={busy}>
+            {saved ? '✓ Kaydedildi' : `Ciroyu kaydet · ${money(dayTotals.total)}`}
+          </Button>
+        </StickyBar>
       )}
 
       {data && tab === 'hareket' && (
@@ -319,7 +346,7 @@ function MovementsTab({ data, date, onChanged }: { data: Data; date: string; onC
                     {m.type === 'giris' ? '+' : '−'}
                     {money(m.amount)}
                   </span>
-                  <Button variant="ghost" size="sm" onClick={() => void remove(m.id)} disabled={busy}>
+                  <Button variant="ghost" size="icon" onClick={() => void remove(m.id)} disabled={busy}>
                     ✕
                   </Button>
                 </div>

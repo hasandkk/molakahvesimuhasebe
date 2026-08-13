@@ -126,6 +126,32 @@ Skill'leri güncellemek için: `npx skills add supabase/agent-skills`
 4. **Para aldığında** — Kasa → Para hareketleri’ne kimin ne kadar aldığını yaz.
 5. **Ara ara** — Kasa → Kasa sayımı ile fiziki parayı say, açık var mı bak.
 
+## Mobil
+
+Uygulama telefon öncelikli tasarlandı — akşam sayımı ve ciro girişi standın
+başında telefonla yapılıyor.
+
+- Form alanları 16px: iOS bundan küçük yazı tipli bir alana odaklanınca sayfayı
+  otomatik yakınlaştırıyor, bu engellendi.
+- Sayım ve rapor tabloları dar ekranda karta dönüşüyor; hiçbir sayfa yana kaymıyor.
+- Kaydet düğmeleri mobilde ekranın altına yapışıyor, uzun listede başa dönmek gerekmiyor.
+- Dokunma hedefleri en az 36-44px.
+- Ana ekrana eklenebilir (manifest + simgeler): tarayıcı çubuğu olmadan uygulama gibi açılır.
+
+Chromium ile 390×844 (iPhone 12) ölçüsünde doğrulandı: yatay taşma yok,
+form alanları 16px, düğmeler 44px, konsol hatası yok.
+
+## Hız
+
+- Sayfalar ayrı paketlere bölündü (`React.lazy`), kütüphaneler `vendor` ve
+  `supabase` paketlerinde. Uygulama kodu değiştiğinde tarayıcı sadece ~5 KB
+  yeniden indiriyor, 145 KB değil.
+- Menüdeki sayfalar tarayıcı boşa düştüğünde önceden indiriliyor; geçişler beklemesiz.
+- Stand ve çalışan listesi gibi nadiren değişen veriler 60 saniye bellekte
+  tutuluyor (`src/lib/refData.ts`), her sayfa geçişinde yeniden çekilmiyor.
+  Tanımlar ekranı bir değişiklik yaptığında önbellek düşürülüyor.
+- Stok ekranı açılışta iki tur istek atıyordu, tek tura indirildi.
+
 ## Komutlar
 
 ```bash

@@ -1,10 +1,24 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useQuery } from '../lib/useQuery'
+import { fetchActiveStands } from '../lib/refData'
 import { formatLong, formatShort, today } from '../lib/date'
 import { money, parseNumber, qty } from '../lib/format'
 import type { Stand, StockReportRow, StockTransfer } from '../lib/types'
-import { Button, Card, DateNav, Empty, ErrorBox, Field, Input, Select, Spinner, Stat, Tabs } from '../components/ui'
+import {
+  Button,
+  Card,
+  DateNav,
+  Empty,
+  ErrorBox,
+  Field,
+  Input,
+  Select,
+  Spinner,
+  Stat,
+  StickyBar,
+  Tabs,
+} from '../components/ui'
 
 type Tab = 'sayim' | 'transfer'
 
@@ -14,36 +28,37 @@ type Data = {
   transfers: (StockTransfer & { stock_transfer_items: { quantity: number; variant_id: string }[] })[]
 }
 
-async function load(standId: string, date: string): Promise<Data> {
-  const standsRes = await supabase
-    .from('stands')
-    .select('*')
-    .eq('is_active', true)
-    .order('sort_order')
-    .order('name')
-  if (standsRes.error) throw standsRes.error
-  const stands = (standsRes.data ?? []) as Stand[]
-
-  const activeStand = standId || stands[0]?.id
-  if (!activeStand) return { stands, rows: [], transfers: [] }
-
+async function fetchStandData(standId: string, date: string) {
   const [report, transfers] = await Promise.all([
-    supabase.rpc('stand_stock_report', { p_stand_id: activeStand, p_date: date }),
+    supabase.rpc('stand_stock_report', { p_stand_id: standId, p_date: date }),
     supabase
       .from('stock_transfers')
       .select('*, stock_transfer_items(quantity, variant_id)')
-      .eq('stand_id', activeStand)
+      .eq('stand_id', standId)
       .order('transfer_date', { ascending: false })
       .limit(15),
   ])
   if (report.error) throw report.error
   if (transfers.error) throw transfers.error
-
   return {
-    stands,
     rows: (report.data ?? []) as StockReportRow[],
     transfers: (transfers.data ?? []) as Data['transfers'],
   }
+}
+
+async function load(standId: string, date: string): Promise<Data> {
+  // Stand seçiliyse üç isteği de aynı anda başlatabiliriz. Seçili değilse
+  // hangi standın raporu çekilecek stand listesinden belli olur; o liste
+  // önbellekten geldiği için ilk açılıştan sonra bekletmez.
+  if (standId) {
+    const [stands, rest] = await Promise.all([fetchActiveStands(), fetchStandData(standId, date)])
+    return { stands, ...rest }
+  }
+
+  const stands = await fetchActiveStands()
+  const first = stands[0]?.id
+  if (!first) return { stands, rows: [], transfers: [] }
+  return { stands, ...(await fetchStandData(first, date)) }
 }
 
 export default function Stock() {
@@ -51,11 +66,6 @@ export default function Stock() {
   const [date, setDate] = useState(today())
   const [standId, setStandId] = useState('')
   const { data, loading, error, reload } = useQuery(() => load(standId, date), [standId, date])
-
-  // İlk yüklemede varsayılan standı seç
-  useEffect(() => {
-    if (!standId && data?.stands.length) setStandId(data.stands[0].id)
-  }, [data, standId])
 
   const activeStandId = standId || data?.stands[0]?.id || ''
 
@@ -152,15 +162,24 @@ function CountTab({
   const prevDate = rows.find((r) => r.prev_date)?.prev_date ?? null
   const alreadyCounted = rows.some((r) => r.counted_qty !== null)
 
+  const soldOf = (row: StockReportRow) => {
+    const raw = values[row.variant_id] ?? ''
+    return raw === '' ? null : Number(row.expected_qty) - parseNumber(raw)
+  }
+
+  const netTransferOf = (row: StockReportRow) => Number(row.transfer_in) - Number(row.transfer_out)
+
+  const filledCount = rows.filter((r) => (values[r.variant_id] ?? '') !== '').length
+
   const estimated = useMemo(() => {
     let total = 0
     for (const row of rows) {
-      const counted = values[row.variant_id]
-      if (counted === undefined || counted === '') continue
-      const sold = Number(row.expected_qty) - parseNumber(counted)
+      const sold = soldOf(row)
+      if (sold === null) continue
       total += sold * Number(row.price ?? 0)
     }
     return total
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, values])
 
   async function save() {
@@ -212,27 +231,91 @@ function CountTab({
         <Stat
           label="Önceki sayım"
           value={prevDate ? formatShort(prevDate) : 'Yok'}
-          sub={prevDate ? 'beklenen stok bu tarihe göre' : 'ilk sayım'}
+          sub={prevDate ? 'beklenen stok buna göre' : 'ilk sayım'}
         />
-        <Stat label="Tahmini satış tutarı" value={money(estimated)} sub="fark × fiyat" />
+        <Stat label="Tahmini satış" value={money(estimated)} sub="fark × fiyat" />
       </div>
 
       <Card
-        title={alreadyCounted ? 'Sayım (kayıtlı — güncelleyebilirsin)' : 'Akşam sayımı'}
+        title={alreadyCounted ? 'Sayım (kayıtlı)' : 'Akşam sayımı'}
         action={
-          <Button size="sm" onClick={() => void save()} disabled={busy}>
+          <Button size="sm" onClick={() => void save()} disabled={busy} className="hidden md:inline-flex">
             {saved ? '✓ Kaydedildi' : 'Sayımı kaydet'}
           </Button>
         }
       >
-        {error && <div className="mb-3"><ErrorBox message={error} /></div>}
+        {error && (
+          <div className="mb-3">
+            <ErrorBox message={error} />
+          </div>
+        )}
 
-        <div className="space-y-4">
+        <div className="space-y-5">
           {groups.map((group) => (
             <div key={group.productId}>
               <h3 className="mb-2 text-sm font-semibold text-stone-800">{group.productName}</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[520px] text-sm">
+
+              {/* Mobil: her gramaj için kart — yatay kaydırma yok */}
+              <div className="space-y-2 md:hidden">
+                {group.rows.map((row) => {
+                  const sold = soldOf(row)
+                  const net = netTransferOf(row)
+                  return (
+                    <div key={row.variant_id} className="rounded-xl border border-stone-200 p-3">
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-sm font-medium text-stone-800">{row.size_label}</span>
+                        <span className="text-xs text-stone-400">{row.unit}</span>
+                      </div>
+                      <div className="mt-2 flex items-end gap-3">
+                        <dl className="flex-1 space-y-0.5 text-xs text-stone-500">
+                          <div className="flex justify-between gap-2">
+                            <dt>Önceki</dt>
+                            <dd className="tabular-nums">{qty(row.prev_qty)}</dd>
+                          </div>
+                          {net !== 0 && (
+                            <div className="flex justify-between gap-2">
+                              <dt>Gelen</dt>
+                              <dd className="tabular-nums">
+                                {net > 0 ? '+' : ''}
+                                {qty(net)}
+                              </dd>
+                            </div>
+                          )}
+                          <div className="flex justify-between gap-2 font-medium text-stone-800">
+                            <dt>Beklenen</dt>
+                            <dd className="tabular-nums">{qty(row.expected_qty)}</dd>
+                          </div>
+                        </dl>
+                        <div className="w-28 shrink-0">
+                          <span className="mb-1 block text-right text-[11px] font-medium text-stone-600">
+                            Sayılan
+                          </span>
+                          <Input
+                            inputMode="decimal"
+                            className="py-2 text-right text-lg font-semibold"
+                            placeholder="0"
+                            value={values[row.variant_id] ?? ''}
+                            onChange={(e) =>
+                              setValues((v) => ({ ...v, [row.variant_id]: e.target.value }))
+                            }
+                          />
+                          <span
+                            className={`mt-1 block text-right text-[11px] ${
+                              sold !== null && sold < 0 ? 'text-red-700' : 'text-stone-500'
+                            }`}
+                          >
+                            {sold === null ? 'girilmedi' : `eksilen ${qty(sold)}`}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Masaüstü: tablo */}
+              <div className="hidden md:block">
+                <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-xs text-stone-500">
                       <th className="pb-1 font-medium">Gramaj</th>
@@ -245,8 +328,8 @@ function CountTab({
                   </thead>
                   <tbody className="divide-y divide-stone-100">
                     {group.rows.map((row) => {
-                      const raw = values[row.variant_id] ?? ''
-                      const sold = raw === '' ? null : Number(row.expected_qty) - parseNumber(raw)
+                      const sold = soldOf(row)
+                      const net = netTransferOf(row)
                       return (
                         <tr key={row.variant_id}>
                           <td className="py-1.5">
@@ -255,9 +338,7 @@ function CountTab({
                           </td>
                           <td className="py-1.5 text-right tabular-nums text-stone-500">{qty(row.prev_qty)}</td>
                           <td className="py-1.5 text-right tabular-nums text-stone-500">
-                            {Number(row.transfer_in) - Number(row.transfer_out) === 0
-                              ? '—'
-                              : qty(Number(row.transfer_in) - Number(row.transfer_out))}
+                            {net === 0 ? '—' : qty(net)}
                           </td>
                           <td className="py-1.5 text-right tabular-nums font-medium">{qty(row.expected_qty)}</td>
                           <td className="w-24 py-1 pl-2">
@@ -265,7 +346,7 @@ function CountTab({
                               inputMode="decimal"
                               className="px-2 py-1.5 text-right"
                               placeholder="0"
-                              value={raw}
+                              value={values[row.variant_id] ?? ''}
                               onChange={(e) =>
                                 setValues((v) => ({ ...v, [row.variant_id]: e.target.value }))
                               }
@@ -297,6 +378,12 @@ function CountTab({
           veya sayım hatası vardır.
         </p>
       </Card>
+
+      <StickyBar>
+        <Button className="w-full" onClick={() => void save()} disabled={busy}>
+          {saved ? '✓ Kaydedildi' : `Sayımı kaydet (${filledCount}/${rows.length})`}
+        </Button>
+      </StickyBar>
     </>
   )
 }
@@ -377,12 +464,16 @@ function TransferTab({
       <Card
         title="Yeni transfer"
         action={
-          <Button size="sm" onClick={() => void save()} disabled={busy}>
+          <Button size="sm" onClick={() => void save()} disabled={busy} className="hidden md:inline-flex">
             Kaydet
           </Button>
         }
       >
-        {error && <div className="mb-3"><ErrorBox message={error} /></div>}
+        {error && (
+          <div className="mb-3">
+            <ErrorBox message={error} />
+          </div>
+        )}
 
         <Field label="Yön">
           <Select value={direction} onChange={(e) => setDirection(e.target.value as 'in' | 'out')}>
@@ -403,7 +494,7 @@ function TransferTab({
                     </span>
                     <Input
                       inputMode="decimal"
-                      className="px-2 py-1.5 text-right"
+                      className="px-2 py-2 text-right"
                       placeholder="0"
                       value={values[row.variant_id] ?? ''}
                       onChange={(e) => setValues((v) => ({ ...v, [row.variant_id]: e.target.value }))}
@@ -419,6 +510,12 @@ function TransferTab({
           <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="İsteğe bağlı" />
         </Field>
       </Card>
+
+      <StickyBar>
+        <Button className="w-full" onClick={() => void save()} disabled={busy}>
+          Transferi kaydet{filled.length > 0 ? ` (${filled.length} kalem)` : ''}
+        </Button>
+      </StickyBar>
 
       <Card title="Son transferler">
         {data.transfers.length === 0 ? (
@@ -438,7 +535,7 @@ function TransferTab({
                     {t.note ? ` · ${t.note}` : ''}
                   </div>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => void remove(t.id)} disabled={busy}>
+                <Button variant="ghost" size="icon" onClick={() => void remove(t.id)} disabled={busy}>
                   ✕
                 </Button>
               </li>

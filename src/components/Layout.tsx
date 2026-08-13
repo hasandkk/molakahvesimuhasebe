@@ -1,5 +1,44 @@
+import { Suspense, useEffect } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
+
+/**
+ * Sayfa paketleri küçük (2-4 KB). Tarayıcı boşa düştüğünde hepsini indir ki
+ * menüye dokunulduğunda geçiş beklemesiz olsun.
+ */
+function usePrefetchPages() {
+  useEffect(() => {
+    const prefetch = () => {
+      void import('../pages/Shifts')
+      void import('../pages/Cash')
+      void import('../pages/Stock')
+      void import('../pages/Reports')
+      void import('../pages/Settings')
+    }
+    const idle = window.requestIdleCallback
+    if (idle) {
+      const handle = idle(prefetch, { timeout: 3000 })
+      return () => window.cancelIdleCallback?.(handle)
+    }
+    const timer = setTimeout(prefetch, 1500)
+    return () => clearTimeout(timer)
+  }, [])
+}
+
+/** Sayfa paketi inerken gösterilen iskelet — boş ekran yerine. */
+function PageSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="h-6 w-40 animate-pulse rounded-lg bg-stone-200" />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="h-20 animate-pulse rounded-2xl bg-stone-200" />
+        ))}
+      </div>
+      <div className="h-48 animate-pulse rounded-2xl bg-stone-200" />
+    </div>
+  )
+}
 
 const NAV = [
   { to: '/', label: 'Özet', icon: '🏠', end: true },
@@ -7,11 +46,12 @@ const NAV = [
   { to: '/kasa', label: 'Kasa', icon: '💵' },
   { to: '/stok', label: 'Stok', icon: '📦' },
   { to: '/raporlar', label: 'Rapor', icon: '📊' },
-  { to: '/tanimlar', label: 'Tanımlar', icon: '⚙️' },
+  { to: '/tanimlar', label: 'Tanım', icon: '⚙️' },
 ]
 
 export default function Layout() {
   const { displayName, signOut } = useAuth()
+  usePrefetchPages()
 
   return (
     <div className="min-h-dvh md:flex">
@@ -34,7 +74,7 @@ export default function Layout() {
               }
             >
               <span aria-hidden>{item.icon}</span>
-              {item.label}
+              {item.label === 'Tanım' ? 'Tanımlar' : item.label}
             </NavLink>
           ))}
         </nav>
@@ -50,37 +90,51 @@ export default function Layout() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Mobil başlık */}
-        <header className="flex items-center justify-between border-b border-stone-200 bg-white px-4 py-3 md:hidden">
+        {/* Mobil başlık — kaydırırken üstte kalır */}
+        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-stone-200 bg-white/95 px-4 py-3 backdrop-blur md:hidden">
           <span className="text-sm font-semibold text-brand-800">☕ Mola Kahvesi</span>
-          <button onClick={() => void signOut()} className="text-xs text-stone-500">
+          <button
+            onClick={() => void signOut()}
+            className="-mr-2 rounded-lg px-2 py-1 text-xs text-stone-500 active:bg-stone-100"
+          >
             Çıkış
           </button>
         </header>
 
-        <main className="flex-1 px-4 py-4 pb-24 md:px-6 md:py-6 md:pb-6">
+        <main className="flex-1 px-4 py-4 pb-[calc(5rem+env(safe-area-inset-bottom))] md:px-6 md:py-6 md:pb-6">
           <div className="mx-auto w-full max-w-5xl space-y-4">
-            <Outlet />
+            <Suspense fallback={<PageSkeleton />}>
+              <Outlet />
+            </Suspense>
           </div>
         </main>
 
         {/* Mobil alt menü */}
-        <nav className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-6 border-t border-stone-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+        <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-6 border-t border-stone-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
           {NAV.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.end}
               className={({ isActive }) =>
-                `flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${
+                `flex min-w-0 flex-col items-center gap-0.5 px-0.5 py-2 text-[10px] font-medium leading-none transition ${
                   isActive ? 'text-brand-800' : 'text-stone-500'
                 }`
               }
             >
-              <span className="text-base" aria-hidden>
-                {item.icon}
-              </span>
-              {item.label}
+              {({ isActive }) => (
+                <>
+                  <span
+                    className={`grid h-7 w-10 place-items-center rounded-lg text-base transition ${
+                      isActive ? 'bg-brand-100' : ''
+                    }`}
+                    aria-hidden
+                  >
+                    {item.icon}
+                  </span>
+                  <span className="w-full truncate text-center">{item.label}</span>
+                </>
+              )}
             </NavLink>
           ))}
         </nav>

@@ -14,7 +14,7 @@ export function Card({
   return (
     <section className={`rounded-2xl border border-stone-200 bg-white shadow-sm ${className}`}>
       {(title || action) && (
-        <header className="flex items-center justify-between gap-3 border-b border-stone-200 px-4 py-3">
+        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200 px-4 py-3">
           <h2 className="text-sm font-semibold text-stone-700">{title}</h2>
           {action}
         </header>
@@ -26,17 +26,22 @@ export function Card({
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
-  size?: 'sm' | 'md'
+  size?: 'sm' | 'md' | 'icon'
 }
 
 export function Button({ variant = 'primary', size = 'md', className = '', ...props }: ButtonProps) {
   const base =
-    'inline-flex items-center justify-center gap-1.5 rounded-xl font-medium transition disabled:cursor-not-allowed disabled:opacity-50'
-  const sizes = { sm: 'px-2.5 py-1.5 text-xs', md: 'px-4 py-2.5 text-sm' }
+    'inline-flex select-none items-center justify-center gap-1.5 rounded-xl font-medium transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50'
+  // Dokunma hedefleri en az ~36-44px; mobilde parmakla isabet ettirmek için.
+  const sizes = {
+    sm: 'min-h-9 px-3 py-2 text-xs',
+    md: 'min-h-11 px-4 py-2.5 text-sm',
+    icon: 'h-9 w-9 shrink-0 p-0 text-base leading-none',
+  }
   const variants = {
     primary: 'bg-brand-700 text-white hover:bg-brand-800 active:bg-brand-900',
     secondary: 'bg-stone-100 text-stone-800 hover:bg-stone-200 border border-stone-300',
-    ghost: 'text-stone-600 hover:bg-stone-100',
+    ghost: 'text-stone-500 hover:bg-stone-200/70 hover:text-stone-800',
     danger: 'bg-red-50 text-red-700 border border-red-200 hover:bg-red-100',
   }
   return <button className={`${base} ${sizes[size]} ${variants[variant]} ${className}`} {...props} />
@@ -62,8 +67,10 @@ export function Field({
   )
 }
 
+// text-base (16px) mobilde şart: iOS daha küçük yazı tipli bir alana
+// odaklanıldığında sayfayı otomatik yakınlaştırıyor.
 const controlClass =
-  'w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 disabled:bg-stone-100'
+  'w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-base text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 disabled:bg-stone-100 sm:text-sm'
 
 export function Input({ className = '', ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return <input className={`${controlClass} ${className}`} {...props} />
@@ -71,6 +78,17 @@ export function Input({ className = '', ...props }: InputHTMLAttributes<HTMLInpu
 
 export function Select({ className = '', ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   return <select className={`${controlClass} ${className}`} {...props} />
+}
+
+/** Saat kutusu — aynı zoom kuralı burada da geçerli. */
+export function TimeInput({ className = '', ...props }: InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      type="time"
+      className={`min-h-9 rounded-lg border border-stone-300 bg-white px-2 py-1 text-base tabular-nums text-stone-800 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 sm:text-xs ${className}`}
+      {...props}
+    />
+  )
 }
 
 export function Stat({
@@ -91,10 +109,10 @@ export function Stat({
     warn: 'text-amber-700',
   }
   return (
-    <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border border-stone-200 bg-white p-3 shadow-sm sm:p-4">
       <div className="text-xs font-medium text-stone-500">{label}</div>
-      <div className={`mt-1 text-xl font-semibold tabular-nums ${tones[tone]}`}>{value}</div>
-      {sub && <div className="mt-0.5 text-xs text-stone-500">{sub}</div>}
+      <div className={`mt-1 text-lg font-semibold tabular-nums sm:text-xl ${tones[tone]}`}>{value}</div>
+      {sub && <div className="mt-0.5 text-[11px] leading-tight text-stone-500 sm:text-xs">{sub}</div>}
     </div>
   )
 }
@@ -118,23 +136,28 @@ export function Empty({ children }: { children: ReactNode }) {
   return <p className="py-6 text-center text-sm text-stone-500">{children}</p>
 }
 
+/**
+ * Mobilde iki sütuna sarar, masaüstünde tek sıra olur — yatay kaydırma yok.
+ */
 export function Tabs<T extends string>({
   tabs,
   active,
   onChange,
 }: {
-  tabs: { id: T; label: string }[]
+  tabs: { id: T; label: ReactNode }[]
   active: T
   onChange: (id: T) => void
 }) {
   return (
-    <div className="flex gap-1 overflow-x-auto rounded-xl bg-stone-200/70 p-1">
+    <div className="flex flex-wrap gap-1 rounded-xl bg-stone-200/70 p-1">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           onClick={() => onChange(tab.id)}
-          className={`flex-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition ${
-            active === tab.id ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-600 hover:text-stone-900'
+          className={`min-h-10 flex-1 basis-[calc(50%-0.25rem)] rounded-lg px-2 py-2 text-sm font-medium transition sm:basis-0 ${
+            active === tab.id
+              ? 'bg-white text-stone-900 shadow-sm'
+              : 'text-stone-600 hover:text-stone-900'
           }`}
         >
           {tab.label}
@@ -155,13 +178,25 @@ export function DateNav({ value, onChange }: { value: string; onChange: (iso: st
   }
   return (
     <div className="flex items-center gap-2">
-      <Button variant="secondary" size="sm" onClick={() => shift(-1)} aria-label="Önceki gün">
+      <Button variant="secondary" size="icon" onClick={() => shift(-1)} aria-label="Önceki gün">
         ‹
       </Button>
       <Input type="date" value={value} onChange={(e) => onChange(e.target.value)} className="flex-1" />
-      <Button variant="secondary" size="sm" onClick={() => shift(1)} aria-label="Sonraki gün">
+      <Button variant="secondary" size="icon" onClick={() => shift(1)} aria-label="Sonraki gün">
         ›
       </Button>
+    </div>
+  )
+}
+
+/**
+ * Mobilde ekranın altına yapışan işlem çubuğu. Uzun formlarda kaydet
+ * düğmesine ulaşmak için başa dönmek gerekmesin diye. Masaüstünde gizli.
+ */
+export function StickyBar({ children }: { children: ReactNode }) {
+  return (
+    <div className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-10 -mx-4 mt-4 border-t border-stone-200 bg-white/95 px-4 py-3 backdrop-blur md:hidden">
+      {children}
     </div>
   )
 }

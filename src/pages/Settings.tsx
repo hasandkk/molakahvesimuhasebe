@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useQuery } from '../lib/useQuery'
+import { invalidateRefData } from '../lib/refData'
 import { money, parseNumber } from '../lib/format'
 import type { Employee, Product, ProductVariant, Stand } from '../lib/types'
 import { Button, Card, Empty, ErrorBox, Field, Input, Spinner, Tabs } from '../components/ui'
@@ -61,6 +62,7 @@ function StandsPanel() {
     else {
       setName('')
       setLocation('')
+      invalidateRefData()
       reload()
     }
     setBusy(false)
@@ -70,7 +72,10 @@ function StandsPanel() {
     setBusy(true)
     const { error } = await supabase.from('stands').update({ is_active: !stand.is_active }).eq('id', stand.id)
     if (error) setActionError(error.message)
-    else reload()
+    else {
+      invalidateRefData()
+      reload()
+    }
     setBusy(false)
   }
 
@@ -141,6 +146,7 @@ function EmployeesPanel() {
       setName('')
       setPhone('')
       setWage('')
+      invalidateRefData()
       reload()
     }
     setBusy(false)
@@ -153,7 +159,10 @@ function EmployeesPanel() {
       .update({ is_active: !employee.is_active })
       .eq('id', employee.id)
     if (error) setActionError(error.message)
-    else reload()
+    else {
+      invalidateRefData()
+      reload()
+    }
     setBusy(false)
   }
 
@@ -251,6 +260,7 @@ function ProductsPanel() {
     if (variantError) setActionError(variantError.message)
     else {
       setName('')
+      invalidateRefData()
       reload()
     }
     setBusy(false)
@@ -269,6 +279,7 @@ function ProductsPanel() {
     else {
       setSavedId(variant.id)
       setTimeout(() => setSavedId(null), 1500)
+      invalidateRefData()
       reload()
     }
     setBusy(false)
@@ -281,7 +292,10 @@ function ProductsPanel() {
       .update({ is_active: !product.is_active })
       .eq('id', product.id)
     if (error) setActionError(error.message)
-    else reload()
+    else {
+      invalidateRefData()
+      reload()
+    }
     setBusy(false)
   }
 
@@ -321,16 +335,24 @@ function ProductsPanel() {
           <ul className="space-y-2">
             {product.product_variants.map((variant) => (
               <li key={variant.id} className="flex items-center gap-2 text-sm">
-                <span className="w-20 shrink-0 text-stone-700">{variant.size_label}</span>
-                <span className="w-12 shrink-0 text-xs text-stone-400">{variant.unit}</span>
+                <span className="w-24 shrink-0 text-stone-700">
+                  {variant.size_label}
+                  <span className="ml-1 text-xs text-stone-400">{variant.unit}</span>
+                </span>
                 <Input
                   inputMode="decimal"
-                  className="flex-1 px-2 py-1.5 text-right"
+                  className="min-w-0 flex-1 px-2 py-2 text-right"
                   placeholder={variant.price === null ? 'fiyat yok' : ''}
                   value={prices[variant.id] ?? (variant.price === null ? '' : String(variant.price))}
                   onChange={(e) => setPrices((p) => ({ ...p, [variant.id]: e.target.value }))}
                 />
-                <Button variant="secondary" size="sm" onClick={() => void savePrice(variant)} disabled={busy}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => void savePrice(variant)}
+                  disabled={busy}
+                >
                   {savedId === variant.id ? '✓' : 'Kaydet'}
                 </Button>
               </li>

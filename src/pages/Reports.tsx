@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useQuery } from '../lib/useQuery'
+import { fetchAllStands } from '../lib/refData'
 import { startOfMonth, today } from '../lib/date'
 import { money } from '../lib/format'
 import { MOVEMENT_LABELS, type CashMovement, type Stand } from '../lib/types'
@@ -23,7 +24,7 @@ type Data = {
 
 async function load(from: string, to: string): Promise<Data> {
   const [stands, revenues, movements, shifts] = await Promise.all([
-    supabase.from('stands').select('*').order('sort_order').order('name'),
+    fetchAllStands(),
     supabase
       .from('daily_revenues')
       .select('business_date, stand_id, cash_amount, pos_amount')
@@ -41,11 +42,11 @@ async function load(from: string, to: string): Promise<Data> {
       .lte('work_date', to),
   ])
 
-  const err = stands.error ?? revenues.error ?? movements.error ?? shifts.error
+  const err = revenues.error ?? movements.error ?? shifts.error
   if (err) throw err
 
   return {
-    stands: (stands.data ?? []) as Stand[],
+    stands,
     revenues: (revenues.data ?? []) as RevenueRow[],
     movements: (movements.data ?? []) as CashMovement[],
     shifts: (shifts.data ?? []) as unknown as ShiftRow[],
@@ -140,8 +141,36 @@ export default function Reports() {
             {byStand.length === 0 ? (
               <Empty>Bu aralıkta ciro kaydı yok.</Empty>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[420px] text-sm">
+              <>
+                {/* Mobil: kart listesi — yatay kaydırma yok */}
+                <ul className="space-y-2 md:hidden">
+                  {byStand.map((row) => (
+                    <li key={row.stand.id} className="rounded-xl border border-stone-200 p-3">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="min-w-0 truncate text-sm font-medium text-stone-800">
+                          {row.stand.name}
+                        </span>
+                        <span className="shrink-0 text-base font-semibold tabular-nums text-stone-900">
+                          {money(row.total)}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-stone-500">
+                        <span>
+                          Nakit <span className="tabular-nums">{money(row.cash)}</span>
+                        </span>
+                        <span>
+                          POS <span className="tabular-nums">{money(row.pos)}</span>
+                        </span>
+                        <span>
+                          <span className="tabular-nums">{row.days}</span> gün
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+
+                {/* Masaüstü: tablo */}
+                <table className="hidden w-full text-sm md:table">
                   <thead>
                     <tr className="text-left text-xs text-stone-500">
                       <th className="pb-2 font-medium">Stand</th>
@@ -163,7 +192,7 @@ export default function Reports() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </>
             )}
           </Card>
 
