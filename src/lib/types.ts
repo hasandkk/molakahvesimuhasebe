@@ -10,12 +10,15 @@ export type Stand = {
  * 'kademeli' — ilk gün ücretsiz, sonra kademe kademe artar
  * 'tam'      — ilk günden itibaren tam ücret + yemek (deneyimli işe alım
  *              ya da program kurulmadan önce başlamış kişi)
+ * 'odemesiz' — hiç ödeme yok: yevmiye de yemek de 0 (ortaklar, ücretsiz
+ *              çalışanlar). Prim girilirse yine de hesaba katılır.
  */
-export type WageMode = 'kademeli' | 'tam'
+export type WageMode = 'kademeli' | 'tam' | 'odemesiz'
 
 export const WAGE_MODE_LABELS: Record<WageMode, string> = {
   kademeli: 'Kademeli (eğitim → 3 gün → tam)',
   tam: 'İlk günden tam ücret',
+  odemesiz: 'Ödeme yok (yevmiye ve yemek 0)',
 }
 
 export type Employee = {

@@ -652,6 +652,7 @@ function PayrollTab({ data, from, to }: { data: Data; from: string; to: string }
    */
   const rateFor = (dayIndex: number, employeeWage: number | null, wageMode: WageMode) => {
     if (!s) return { wage: 0, meal: 0 }
+    if (wageMode === 'odemesiz') return { wage: 0, meal: 0 }
     const fullWage = employeeWage !== null ? Number(employeeWage) : Number(s.tier2_wage)
     if (wageMode === 'tam') return { wage: fullWage, meal: Number(s.meal_wage) }
     if (dayIndex === 1) return { wage: Number(s.first_day_wage), meal: Number(s.first_day_meal) }
@@ -899,12 +900,17 @@ function PayrollTab({ data, from, to }: { data: Data; from: string; to: string }
                             tam ücret
                           </span>
                         )}
+                        {r.wageMode === 'odemesiz' && (
+                          <span className="shrink-0 rounded-md bg-stone-200 px-1.5 py-0.5 text-[10px] font-semibold text-stone-600">
+                            ödeme yok
+                          </span>
+                        )}
                       </span>
                       <span className="text-xs text-stone-500">
                         {workedDays} gün · yevmiye {money(r.wageTotal)} · yemek {money(r.mealTotal)}
                         {r.bonusTotal !== 0 && ` · prim ${money(r.bonusTotal)}`}
                       </span>
-                      {r.total === 0 && r.days.some((d) => d.dayIndex === 1) && (
+                      {r.wageMode === 'kademeli' && r.total === 0 && r.days.some((d) => d.dayIndex === 1) && (
                         <span className="mt-0.5 block text-xs text-amber-700">
                           İlk çalışma günü ücretsiz sayıldı. Daha önce başlamış biriyse
                           “Tanımlar → Çalışanlar”dan ücret modelini “ilk günden tam ücret” yap.

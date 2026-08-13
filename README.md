@@ -81,6 +81,8 @@ Her çalışan için **ücret modeli** seçilir (“Tanımlar → Çalışanlar�
 - **İlk günden tam ücret** — eğitim günü ve düşük kademe atlanır, ilk günden
   itibaren tam ücret + yemek. Deneyimli işe alımlar ve program kurulmadan önce
   çalışmaya başlamış kişiler için.
+- **Ödeme yok** — yevmiye de yemek de 0. Ortaklar ve ücretsiz çalışanlar için.
+  Kişi listede görünür ama tutarı sıfırdır; yine de prim yazılabilir.
 
 Bir çalışana özel tutar vermek istersen aynı ekrandaki yevmiye alanını doldur;
 o kişi tam ücret olarak genel tutar yerine kendi ücretini alır.
