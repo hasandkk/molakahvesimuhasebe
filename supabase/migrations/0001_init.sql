@@ -15,6 +15,39 @@
 create extension if not exists pgcrypto;
 
 -- ---------------------------------------------------------------------
+-- Rapor fonksiyonlarını önce düşür.
+--
+-- Postgres, create or replace ile bir fonksiyonun döndürdüğü kolonları
+-- değiştirmeye izin vermez ("cannot change return type of existing
+-- function"). Bu yüzden betiğin tekrar tekrar çalışabilmesi için
+-- fonksiyonları baştan siliyoruz; hemen aşağıda yeniden oluşturuluyorlar.
+--
+-- İmza yazmak yerine ada göre siliyoruz: veritabanında eski bir sürümden
+-- kalma farklı parametreli bir kopya varsa o da temizlensin.
+--
+-- Trigger fonksiyonlarına (set_updated_at, handle_new_user) dokunulmaz;
+-- onlara bağlı trigger'lar var ve dönüş tipleri hiç değişmiyor.
+-- ---------------------------------------------------------------------
+do $drop_fns$
+declare
+  fn record;
+begin
+  for fn in
+    select p.oid::regprocedure as imza
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in (
+        'stand_stock_report', 'stock_daily_sales', 'stock_count_variance',
+        'stock_daily_movement', 'payroll', 'cash_summary', 'cash_balance_until'
+      )
+  loop
+    execute 'drop function ' || fn.imza || ' cascade';
+  end loop;
+end;
+$drop_fns$;
+
+-- ---------------------------------------------------------------------
 -- Ortak yardımcılar
 -- ---------------------------------------------------------------------
 create or replace function public.set_updated_at()
@@ -221,7 +254,6 @@ create index if not exists employee_bonuses_employee_idx on public.employee_bonu
 --   Aynı gün iki vardiya çalışılsa da bir gün sayılır; shifts kolonu kaç
 --   vardiya olduğunu bilgi olarak taşır.
 -- ---------------------------------------------------------------------
-drop function if exists public.payroll(date, date);
 create or replace function public.payroll(p_from date, p_to date)
 returns table (
   employee_id  uuid,
@@ -422,7 +454,6 @@ create index if not exists stock_transfer_items_variant_idx on public.stock_tran
 --   Transfer ve satışlar "son sayımdan SONRA, bu tarihe kadar" alınır;
 --   sayım akşam yapıldığı için o günün satışları da dahildir.
 -- ---------------------------------------------------------------------
-drop function if exists public.stand_stock_report(uuid, date);
 create or replace function public.stand_stock_report(p_stand_id uuid, p_date date)
 returns table (
   variant_id     uuid,
@@ -526,9 +557,6 @@ $$;
 --   Doğrudan girilen satış kayıtlarından gelir; iki sayım arasındaki farka
 --   dayanmaz, o yüzden her gün sayım yapılmasa da doğrudur.
 -- ---------------------------------------------------------------------
-drop function if exists public.stock_daily_movement(date, date, uuid);
-
-drop function if exists public.stock_daily_sales(date, date, uuid);
 create or replace function public.stock_daily_sales(
   p_from date,
   p_to date,
@@ -576,7 +604,6 @@ $$;
 --   Fiziki sayımların teorik stoktan sapması — fire/kayıp takibi.
 --   Eksi değer stokta olması gerekenden az bulunduğunu gösterir.
 -- ---------------------------------------------------------------------
-drop function if exists public.stock_count_variance(date, date, uuid);
 create or replace function public.stock_count_variance(
   p_from date,
   p_to date,
@@ -631,7 +658,6 @@ $$;
 --   Nakit bakiye = toplam nakit ciro + hareketlerin işaretli toplamı.
 --   POS tutarları bankaya gittiği için nakit bakiyeye dahil edilmez.
 -- ---------------------------------------------------------------------
-drop function if exists public.cash_balance_until(date);
 create or replace function public.cash_balance_until(p_date date)
 returns numeric
 language sql
@@ -647,7 +673,6 @@ as $$
     ), 0);
 $$;
 
-drop function if exists public.cash_summary();
 create or replace function public.cash_summary()
 returns table (
   cash_income   numeric,
