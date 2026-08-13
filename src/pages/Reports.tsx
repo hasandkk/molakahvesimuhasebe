@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useQuery } from '../lib/useQuery'
 import { fetchAllEmployees, fetchAllStands } from '../lib/refData'
-import { formatLong, formatShort, startOfMonth, today } from '../lib/date'
+import { addDays, formatDayMonth, formatLong, formatShort, startOfMonth, startOfWeek, today } from '../lib/date'
 import { money, parseNumber, qty } from '../lib/format'
 import {
   MOVEMENT_LABELS,
@@ -41,15 +41,13 @@ type Data = {
   shifts: ShiftRow[]
   sales: StockSaleRow[]
   variances: StockVarianceRow[]
-  payroll: PayrollRow[]
   settings: PayrollSettings | null
-  bonuses: EmployeeBonus[]
 }
 
 const hhmm = (t: string | null) => (t ? t.slice(0, 5) : '')
 
 async function load(from: string, to: string): Promise<Data> {
-  const [stands, employees, revenues, movements, shifts, sales, variances, payroll, settings, bonuses] =
+  const [stands, employees, revenues, movements, shifts, sales, variances, settings] =
     await Promise.all([
     fetchAllStands(),
     fetchAllEmployees(),
@@ -66,14 +64,11 @@ async function load(from: string, to: string): Promise<Data> {
       .lte('work_date', to),
     supabase.rpc('stock_daily_sales', { p_from: from, p_to: to, p_stand_id: null }),
     supabase.rpc('stock_count_variance', { p_from: from, p_to: to, p_stand_id: null }),
-    supabase.rpc('payroll', { p_from: from, p_to: to }),
     supabase.from('payroll_settings').select('*').limit(1),
-    supabase.from('employee_bonuses').select('*').gte('work_date', from).lte('work_date', to),
   ])
 
   const err =
-    revenues.error ?? movements.error ?? shifts.error ?? sales.error ?? variances.error ??
-    payroll.error ?? settings.error ?? bonuses.error
+    revenues.error ?? movements.error ?? shifts.error ?? sales.error ?? variances.error ?? settings.error
   if (err) throw err
 
   return {
@@ -84,9 +79,7 @@ async function load(from: string, to: string): Promise<Data> {
     shifts: (shifts.data ?? []) as unknown as ShiftRow[],
     sales: (sales.data ?? []) as StockSaleRow[],
     variances: (variances.data ?? []) as StockVarianceRow[],
-    payroll: (payroll.data ?? []) as PayrollRow[],
     settings: ((settings.data ?? [])[0] as PayrollSettings | undefined) ?? null,
-    bonuses: (bonuses.data ?? []) as EmployeeBonus[],
   }
 }
 
@@ -94,7 +87,7 @@ export default function Reports() {
   const [tab, setTab] = useState<Tab>('ozet')
   const [from, setFrom] = useState(startOfMonth(today()))
   const [to, setTo] = useState(today())
-  const { data, loading, error, reload } = useQuery(() => load(from, to), [from, to])
+  const { data, loading, error } = useQuery(() => load(from, to), [from, to])
 
   return (
     <>
@@ -126,7 +119,7 @@ export default function Reports() {
       {data && tab === 'ozet' && <SummaryTab data={data} />}
       {data && tab === 'vardiya' && <ShiftHistoryTab data={data} />}
       {data && tab === 'stok' && <StockHistoryTab data={data} />}
-      {data && tab === 'maas' && <PayrollTab data={data} from={from} to={to} onChanged={reload} />}
+      {data && tab === 'maas' && <PayrollTab data={data} from={from} to={to} />}
     </>
   )
 }
@@ -612,30 +605,55 @@ function StockHistoryTab({ data }: { data: Data }) {
 
 /* ----------------------------------------------------------------- Maaş */
 
-function PayrollTab({
-  data,
-  from,
-  to,
-  onChanged,
-}: {
-  data: Data
-  from: string
-  to: string
-  onChanged: () => void
-}) {
+type PayrollData = { payroll: PayrollRow[]; bonuses: EmployeeBonus[] }
+
+async function loadPayroll(from: string, to: string): Promise<PayrollData> {
+  const [payroll, bonuses] = await Promise.all([
+    supabase.rpc('payroll', { p_from: from, p_to: to }),
+    supabase.from('employee_bonuses').select('*').gte('work_date', from).lte('work_date', to),
+  ])
+  if (payroll.error) throw payroll.error
+  if (bonuses.error) throw bonuses.error
+  return {
+    payroll: (payroll.data ?? []) as PayrollRow[],
+    bonuses: (bonuses.data ?? []) as EmployeeBonus[],
+  }
+}
+
+function PayrollTab({ data, from, to }: { data: Data; from: string; to: string }) {
+  const [mode, setMode] = useState<'haftalik' | 'aralik'>('haftalik')
+  // Ödeme günü pazartesi; kapsanan dönem bir önceki pazartesi–pazar.
+  // Varsayılan: bugünden sonraki ilk pazartesi (bugün pazartesiyse bugün).
+  // Hafta ortasında bakınca "bu hafta ne birikti" görünsün diye.
+  const nextPayDay = () => {
+    const monday = startOfWeek(today())
+    return monday === today() ? monday : addDays(monday, 7)
+  }
+  const [payDay, setPayDay] = useState(nextPayDay)
   const [openSettings, setOpenSettings] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const period =
+    mode === 'haftalik' ? { from: addDays(payDay, -7), to: addDays(payDay, -1) } : { from, to }
+
+  const {
+    data: pd,
+    loading,
+    error,
+    reload,
+  } = useQuery(() => loadPayroll(period.from, period.to), [period.from, period.to])
+
   const s = data.settings
 
   /**
    * kademeli: 1. gün ücretsiz → sonraki tier1_days gün tier1 → devamı tam ücret
    * tam:      ilk günden itibaren tam ücret + yemek
-   * Çalışana özel ücret girilmişse tam ücret olarak o kullanılır.
    */
-  const rateFor = (dayIndex: number, employeeWage: number | null, mode: WageMode) => {
+  const rateFor = (dayIndex: number, employeeWage: number | null, wageMode: WageMode) => {
     if (!s) return { wage: 0, meal: 0 }
     const fullWage = employeeWage !== null ? Number(employeeWage) : Number(s.tier2_wage)
-    if (mode === 'tam') return { wage: fullWage, meal: Number(s.meal_wage) }
+    if (wageMode === 'tam') return { wage: fullWage, meal: Number(s.meal_wage) }
     if (dayIndex === 1) return { wage: Number(s.first_day_wage), meal: Number(s.first_day_meal) }
     if (dayIndex <= 1 + s.tier1_days) return { wage: Number(s.tier1_wage), meal: Number(s.meal_wage) }
     return { wage: fullWage, meal: Number(s.meal_wage) }
@@ -651,12 +669,13 @@ function PayrollTab({
   }
 
   const rows = useMemo(() => {
+    if (!pd) return []
     const map = new Map<
       string,
       {
         id: string
         name: string
-        mode: WageMode
+        wageMode: WageMode
         days: DayLine[]
         wageTotal: number
         mealTotal: number
@@ -665,11 +684,12 @@ function PayrollTab({
     >()
 
     const bonusOf = (employeeId: string, date: string) =>
-      Number(data.bonuses.find((b) => b.employee_id === employeeId && b.work_date === date)?.amount ?? 0)
+      Number(pd.bonuses.find((b) => b.employee_id === employeeId && b.work_date === date)?.amount ?? 0)
 
-    for (const p of data.payroll) {
+    for (const p of pd.payroll) {
       const emp = data.employees.find((e) => e.id === p.employee_id)
-      const { wage, meal } = rateFor(p.day_index, emp?.daily_wage ?? null, emp?.wage_mode ?? 'kademeli')
+      const wageMode = (emp?.wage_mode ?? 'kademeli') as WageMode
+      const { wage, meal } = rateFor(p.day_index, emp?.daily_wage ?? null, wageMode)
       const bonus = bonusOf(p.employee_id, p.work_date)
 
       const row =
@@ -677,7 +697,7 @@ function PayrollTab({
         {
           id: p.employee_id,
           name: p.full_name,
-          mode: emp?.wage_mode ?? ('kademeli' as WageMode),
+          wageMode,
           days: [],
           wageTotal: 0,
           mealTotal: 0,
@@ -698,18 +718,16 @@ function PayrollTab({
     }
 
     // Çalışma günüyle eşleşmeyen primler de hesaba katılmalı
-    for (const b of data.bonuses) {
+    for (const b of pd.bonuses) {
       const row = map.get(b.employee_id)
-      const matched = row?.days.some((d) => d.date === b.work_date)
-      if (matched) continue
-      const name = data.employees.find((e) => e.id === b.employee_id)?.full_name ?? '—'
+      if (row?.days.some((d) => d.date === b.work_date)) continue
+      const emp = data.employees.find((e) => e.id === b.employee_id)
       const target =
         row ??
         {
           id: b.employee_id,
-          name,
-          mode: (data.employees.find((e) => e.id === b.employee_id)?.wage_mode ??
-            'kademeli') as WageMode,
+          name: emp?.full_name ?? '—',
+          wageMode: (emp?.wage_mode ?? 'kademeli') as WageMode,
           days: [],
           wageTotal: 0,
           mealTotal: 0,
@@ -735,7 +753,7 @@ function PayrollTab({
       }))
       .sort((a, b) => b.total - a.total)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data])
+  }, [pd, data.employees, s])
 
   const grand = rows.reduce(
     (acc, r) => ({
@@ -747,8 +765,83 @@ function PayrollTab({
     { wage: 0, meal: 0, bonus: 0, total: 0 },
   )
 
+  const donemMetni = `${formatDayMonth(period.from)} – ${formatDayMonth(period.to)}`
+
+  const odemeMetni = useMemo(() => {
+    const lines = [
+      mode === 'haftalik'
+        ? `💰 ${formatLong(payDay)} ödemesi — ${donemMetni} dönemi`
+        : `💰 ${donemMetni} dönemi ödemesi`,
+      '',
+    ]
+    for (const r of rows) {
+      const gun = r.days.filter((d) => d.dayIndex !== null).length
+      lines.push(`${r.name} — ${gun} gün · ${money(r.total)}`)
+    }
+    lines.push('', `Toplam: ${money(grand.total)}`)
+    return lines.join('\n')
+  }, [rows, grand.total, payDay, donemMetni, mode])
+
+  async function copyText() {
+    try {
+      await navigator.clipboard.writeText(odemeMetni)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      /* pano yoksa sessiz geç */
+    }
+  }
+
   return (
     <>
+      <Tabs
+        active={mode}
+        onChange={setMode}
+        tabs={[
+          { id: 'haftalik' as const, label: 'Haftalık ödeme' },
+          { id: 'aralik' as const, label: 'Seçili aralık' },
+        ]}
+      />
+
+      {mode === 'haftalik' && (
+        <div className="rounded-2xl border border-stone-200 bg-white p-3 shadow-sm">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="icon"
+              onClick={() => setPayDay(addDays(payDay, -7))}
+              aria-label="Önceki hafta"
+            >
+              ‹
+            </Button>
+            <div className="min-w-0 flex-1 text-center">
+              <div className="text-sm font-semibold text-stone-900">{formatLong(payDay)}</div>
+              <div className="text-xs text-stone-500">ödeme günü · {donemMetni} dönemi</div>
+            </div>
+            <Button
+              variant="secondary"
+              size="icon"
+              onClick={() => setPayDay(addDays(payDay, 7))}
+              aria-label="Sonraki hafta"
+            >
+              ›
+            </Button>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="mt-2 w-full"
+            onClick={() => setPayDay(nextPayDay())}
+          >
+            Yaklaşan ödeme
+          </Button>
+        </div>
+      )}
+
+      {!s && (
+        <ErrorBox message="Ücret kademeleri bulunamadı, bu yüzden tüm tutarlar sıfır görünüyor. 0001_init.sql betiğini çalıştır." />
+      )}
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Yevmiye" value={money(grand.wage)} />
         <Stat label="Yemek" value={money(grand.meal)} />
@@ -756,18 +849,37 @@ function PayrollTab({
         <Stat label="Toplam ödenecek" value={money(grand.total)} tone="warn" />
       </div>
 
+      {error && <ErrorBox message={error} />}
+      {loading && !pd && <Spinner />}
+
       <SettingsCard
         settings={s}
         open={openSettings}
         onToggle={() => setOpenSettings((v) => !v)}
-        onSaved={onChanged}
+        onSaved={reload}
       />
 
-      <BonusCard data={data} from={from} to={to} onChanged={onChanged} />
+      <BonusCard
+        key={`${period.from}-${period.to}`}
+        employees={data.employees}
+        bonuses={pd?.bonuses ?? []}
+        from={period.from}
+        to={period.to}
+        onChanged={reload}
+      />
 
-      <Card title="Çalışan başına hesap">
+      <Card
+        title="Çalışan başına hesap"
+        action={
+          rows.length > 0 && (
+            <Button size="sm" variant="secondary" onClick={() => void copyText()}>
+              {copied ? '✓ Kopyalandı' : 'Listeyi kopyala'}
+            </Button>
+          )
+        }
+      >
         {rows.length === 0 ? (
-          <Empty>Bu aralıkta çalışma kaydı yok.</Empty>
+          <Empty>Bu dönemde çalışma kaydı yok.</Empty>
         ) : (
           <ul className="divide-y divide-stone-200">
             {rows.map((r) => {
@@ -782,7 +894,7 @@ function PayrollTab({
                     <span className="min-w-0">
                       <span className="flex items-center gap-1.5">
                         <span className="truncate text-sm font-medium text-stone-800">{r.name}</span>
-                        {r.mode === 'tam' && (
+                        {r.wageMode === 'tam' && (
                           <span className="shrink-0 rounded-md bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800">
                             tam ücret
                           </span>
@@ -792,6 +904,12 @@ function PayrollTab({
                         {workedDays} gün · yevmiye {money(r.wageTotal)} · yemek {money(r.mealTotal)}
                         {r.bonusTotal !== 0 && ` · prim ${money(r.bonusTotal)}`}
                       </span>
+                      {r.total === 0 && r.days.some((d) => d.dayIndex === 1) && (
+                        <span className="mt-0.5 block text-xs text-amber-700">
+                          İlk çalışma günü ücretsiz sayıldı. Daha önce başlamış biriyse
+                          “Tanımlar → Çalışanlar”dan ücret modelini “ilk günden tam ücret” yap.
+                        </span>
+                      )}
                     </span>
                     <span className="shrink-0 text-right">
                       <span className="block font-semibold tabular-nums text-stone-900">
@@ -809,6 +927,9 @@ function PayrollTab({
                             {formatShort(d.date)}
                             {d.dayIndex !== null && (
                               <span className="ml-1 text-stone-400">{d.dayIndex}. gün</span>
+                            )}
+                            {d.dayIndex === 1 && d.wage === 0 && (
+                              <span className="ml-1 text-amber-700">ücretsiz</span>
                             )}
                             {d.isTraining && <span className="ml-1 text-amber-700">eğitim</span>}
                           </span>
@@ -835,8 +956,9 @@ function PayrollTab({
       </Card>
 
       <p className="text-xs text-stone-500">
+        Haftalık ödemede pazartesi günü <strong>bir önceki pazartesi–pazar</strong> dönemi ödenir.
         Aynı gün iki vardiya çalışılsa da bir gün sayılır. Kademe sayacı kişinin işe başladığı ilk
-        günden işler, seçtiğin tarih aralığından değil.
+        günden işler, seçtiğin dönemden değil.
       </p>
     </>
   )
@@ -937,17 +1059,20 @@ function SettingsCard({
 }
 
 function BonusCard({
-  data,
+  employees,
+  bonuses,
   from,
   to,
   onChanged,
 }: {
-  data: Data
+  employees: Employee[]
+  bonuses: EmployeeBonus[]
   from: string
   to: string
   onChanged: () => void
 }) {
   const [date, setDate] = useState(to)
+
   const [employeeId, setEmployeeId] = useState('')
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
@@ -989,8 +1114,8 @@ function BonusCard({
     setBusy(false)
   }
 
-  const nameOf = (id: string) => data.employees.find((e) => e.id === id)?.full_name ?? '—'
-  const list = [...data.bonuses].sort((a, b) => b.work_date.localeCompare(a.work_date))
+  const nameOf = (id: string) => employees.find((e) => e.id === id)?.full_name ?? '—'
+  const list = [...bonuses].sort((a, b) => b.work_date.localeCompare(a.work_date))
 
   return (
     <Card title="Prim">
@@ -1006,7 +1131,7 @@ function BonusCard({
         <Field label="Çalışan">
           <Select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
             <option value="">Seç…</option>
-            {data.employees.map((e) => (
+            {employees.map((e) => (
               <option key={e.id} value={e.id}>
                 {e.full_name}
               </option>

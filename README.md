@@ -87,10 +87,21 @@ o kişi tam ücret olarak genel tutar yerine kendi ücretini alır.
 
 Güne özel **prim** yazılabilir; eksi değer kesinti anlamına gelir.
 
+### Haftalık ödeme
+
+Ödeme her pazartesi yapılır ve **bir önceki pazartesi–pazar** dönemini kapsar.
+Maaş sekmesindeki “Haftalık ödeme” görünümü bunu doğrudan gösterir: üstte ödeme
+günü ve kapsanan dönem, altta çalışan başına ödenecek tutar ve genel toplam.
+Liste tek tuşla metin olarak kopyalanabilir.
+
+Varsayılan olarak **yaklaşan ödeme** açılır — hafta ortasında bakınca içinde
+bulunulan hafta (bugün dahil) görünür. “Seçili aralık” sekmesiyle istediğin
+tarih aralığı için de hesaplatabilirsin.
+
 İki önemli davranış:
 
-- **Kademe sayacı kişinin işe başladığı ilk günden işler**, seçilen tarih aralığından
-  değil. Yoksa her ay herkes yeniden “ilk gün” olurdu.
+- **Kademe sayacı kişinin işe başladığı ilk günden işler**, seçilen dönemden
+  değil. Yoksa her ödeme döneminde herkes yeniden “ilk gün” olurdu.
 - **Aynı gün iki vardiya çalışılsa da bir gün sayılır** — ücret günlük.
 
 ### Kasa mantığı
