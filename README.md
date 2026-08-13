@@ -69,6 +69,10 @@ Supabase panelinde **SQL Editor**’ü aç ve sırayla çalıştır:
 
 Deneme verisini sonradan silmek için: `supabase/demo_data_temizle.sql`
 
+**Gerçek kullanıma geçerken:** `supabase/gercek_veri.sql` her şeyi sıfırlayıp
+gerçek standları (Feneryolu, Kelkit Vadisi, Ziyade Opet), çalışanları ve açılış
+stok sayımını yükler. Bundan sonra `demo_data.sql` çalıştırılmamalı.
+
 ### 2. Kullanıcılar
 
 Uygulamada kayıt ekranı **yoktur**; hesaplar panelden açılır.
@@ -173,4 +177,5 @@ supabase/
   seed.sql               boş başlangıç verisi
   demo_data.sql          denemek için 21 günlük gerçekçi veri
   demo_data_temizle.sql  deneme verisini geri alır
+  gercek_veri.sql        her şeyi sıfırlar, gerçek standları/çalışanları/stoğu yükler
 ```
