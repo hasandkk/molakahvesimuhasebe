@@ -33,6 +33,21 @@ export function startOfMonth(iso: string): string {
   return `${iso.slice(0, 7)}-01`
 }
 
+/** Haftanın başı — pazartesi. */
+export function startOfWeek(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  const date = new Date(y, m - 1, d)
+  const day = date.getDay() // 0 = pazar
+  const back = day === 0 ? 6 : day - 1
+  return addDays(iso, -back)
+}
+
+/** Verilen tarihin haftasındaki 7 gün (pazartesiden pazara). */
+export function weekDays(iso: string): string[] {
+  const start = startOfWeek(iso)
+  return Array.from({ length: 7 }, (_, i) => addDays(start, i))
+}
+
 function toDate(iso: string): Date {
   const [y, m, d] = iso.split('-').map(Number)
   return new Date(y, m - 1, d)
@@ -48,4 +63,17 @@ export function formatLong(iso: string): string {
 /** "14.08.2026" */
 export function formatShort(iso: string): string {
   return shortFmt.format(toDate(iso))
+}
+
+const weekdayFmt = new Intl.DateTimeFormat('tr-TR', { weekday: 'short' })
+const dayMonthFmt = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short' })
+
+/** "Pzt" */
+export function formatWeekday(iso: string): string {
+  return weekdayFmt.format(toDate(iso))
+}
+
+/** "11 Ağu" */
+export function formatDayMonth(iso: string): string {
+  return dayMonthFmt.format(toDate(iso))
 }

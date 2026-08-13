@@ -8,7 +8,7 @@ React + Vite + TypeScript + Tailwind, arka planda Supabase (Postgres + Auth).
 | Ekran        | İçerik |
 |--------------|--------|
 | **Özet**     | Bugünkü ciro, aylık ciro, kasadaki nakit, yarınki vardiya durumu, ciro/sayım girilmemiş standlar |
-| **Vardiya**  | Gün seç → her standa çalışan ata → gruba atılacak mesajı tek tuşla kopyala. Standart vardiyalar 08:00–15:30 ve 15:30–23:00; saatler her atama için tek tek değiştirilebilir. Aynı vardiyada birden fazla kişi çalışabilir. Eğitime gelenler ayrı tür olarak yazılır, saat girmek zorunlu değildir. “Bir önceki günü kopyala” kısayolu var |
+| **Vardiya**  | **Gün** görünümünde plan yapılır, **Hafta** görünümünde tüm hafta tek ekranda görülür. Standart vardiyalar 08:00–15:30 ve 15:30–23:00; saatler değiştirilebilir. Aynı vardiyada birden fazla kişi çalışabilir, eğitime gelenler ayrı tür olarak yazılır. Saat çakışması uyarı verir. Mesaj stand bazlı veya toplu kopyalanır |
 | **Kasa**     | Stand bazlı gün sonu nakit/POS girişi · para çekme, gider, kasaya giriş, bankaya yatırma hareketleri · fiziki kasa sayımı ve açık/fazla tespiti |
 | **Stok**     | Akşam sayımı (100g/250g/500g/1kg/dökme) · depodan standa mal transferi · beklenen–sayılan farkı ve tahmini satış tutarı |
 | **Raporlar** | Üç sekme: **Özet** (stand bazlı ciro, kim ne kadar çekti, gider kalemleri) · **Vardiya geçmişi** (gün gün kim hangi standda, hangi saatte; çalışana göre süzülebilir) · **Stok geçmişi** (hangi gün hangi standda hangi üründen ne kadar eksildi) |
@@ -41,6 +41,14 @@ Bir atama ya **vardiya** ya da **eğitim** olur:
 
 Eğitim kayıtları vardiya sayılmaz: bir standda sadece eğitim varsa Özet ekranı
 o standı hâlâ “atama yok” diye uyarır, Raporlar da vardiya ile eğitimi ayrı sayar.
+
+### Çakışma kuralı
+
+Aynı kişi aynı gün farklı standlarda çalışabilir — sabah birinde, akşam
+diğerinde. Yasak olan **saatlerin çakışması**. Bitişik vardiyalar (12:00'de
+biten ve 12:00'de başlayan) çakışma sayılmaz. Çakışan kişi ekleme listesinde
+seçilemez ve sebebi yazar; kayıtlı planda çakışma varsa ekranın üstünde
+kırmızı uyarı çıkar.
 
 ### Kasa mantığı
 

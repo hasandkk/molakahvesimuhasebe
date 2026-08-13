@@ -155,17 +155,24 @@ function SummaryTab({ data }: { data: Data }) {
     return [...map.entries()].sort((a, b) => b[1] - a[1])
   }, [data])
 
+  /** Vardiya sayısı × yevmiye = o dönem ödenecek tutar. */
   const byEmployee = useMemo(() => {
-    const map = new Map<string, { shifts: number; trainings: number }>()
+    const map = new Map<string, { name: string; shifts: number; trainings: number; wage: number | null }>()
     for (const s of data.shifts) {
-      const name = s.employees?.full_name ?? '—'
-      const row = map.get(name) ?? { shifts: 0, trainings: 0 }
+      const row = map.get(s.employee_id) ?? {
+        name: s.employees?.full_name ?? '—',
+        shifts: 0,
+        trainings: 0,
+        wage: data.employees.find((e) => e.id === s.employee_id)?.daily_wage ?? null,
+      }
       if (s.kind === 'egitim') row.trainings += 1
       else row.shifts += 1
-      map.set(name, row)
+      map.set(s.employee_id, row)
     }
-    return [...map.entries()].sort((a, b) => b[1].shifts - a[1].shifts)
+    return [...map.values()].sort((a, b) => b.shifts - a.shifts)
   }, [data])
+
+  const wageTotal = byEmployee.reduce((s, r) => s + r.shifts * Number(r.wage ?? 0), 0)
 
   return (
     <>
@@ -265,21 +272,46 @@ function SummaryTab({ data }: { data: Data }) {
         </Card>
       </div>
 
-      <Card title="Çalışan başına vardiya sayısı">
+      <Card
+        title="Çalışan başına vardiya"
+        action={
+          wageTotal > 0 && (
+            <span className="text-xs text-stone-500">
+              toplam <strong className="tabular-nums text-stone-800">{money(wageTotal)}</strong>
+            </span>
+          )
+        }
+      >
         {byEmployee.length === 0 ? (
           <Empty>Bu aralıkta vardiya kaydı yok.</Empty>
         ) : (
-          <ul className="divide-y divide-stone-100 text-sm">
-            {byEmployee.map(([name, row]) => (
-              <li key={name} className="flex justify-between gap-3 py-2">
-                <span className="min-w-0 truncate">{name}</span>
-                <span className="shrink-0 tabular-nums text-stone-600">
-                  {row.shifts} vardiya
-                  {row.trainings > 0 && <span className="ml-1 text-amber-700">· {row.trainings} eğitim</span>}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="divide-y divide-stone-100 text-sm">
+              {byEmployee.map((row) => (
+                <li key={row.name} className="flex items-baseline justify-between gap-3 py-2">
+                  <span className="min-w-0 truncate">{row.name}</span>
+                  <span className="shrink-0 text-right">
+                    <span className="tabular-nums text-stone-600">
+                      {row.shifts} vardiya
+                      {row.trainings > 0 && (
+                        <span className="ml-1 text-amber-700">· {row.trainings} eğitim</span>
+                      )}
+                    </span>
+                    {row.wage ? (
+                      <span className="block text-xs tabular-nums text-stone-500">
+                        × {money(row.wage)} = <strong>{money(row.shifts * Number(row.wage))}</strong>
+                      </span>
+                    ) : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {wageTotal === 0 && (
+              <p className="mt-3 text-xs text-stone-500">
+                Ödenecek tutarı da görmek istersen “Tanımlar → Çalışanlar” ekranından yevmiye gir.
+              </p>
+            )}
+          </>
         )}
       </Card>
 
