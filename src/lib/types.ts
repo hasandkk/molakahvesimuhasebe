@@ -125,6 +125,25 @@ export type StockReportRow = {
   sold_amount: number | null
 }
 
+/** stock_daily_movement() RPC satırı — bir günün bir gramajdaki eksilmesi */
+export type StockMovementRow = {
+  count_date: string
+  stand_id: string
+  stand_name: string
+  variant_id: string
+  product_name: string
+  size_label: string
+  unit: VariantUnit
+  prev_date: string | null
+  prev_qty: number
+  transfer_in: number
+  transfer_out: number
+  expected_qty: number
+  counted_qty: number
+  sold_qty: number
+  sold_amount: number
+}
+
 export const MOVEMENT_LABELS: Record<CashMovementType, string> = {
   cekim: 'Para çekme',
   gider: 'Gider',

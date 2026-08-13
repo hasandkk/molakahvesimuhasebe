@@ -371,6 +371,104 @@ as $$
 $$;
 
 -- ---------------------------------------------------------------------
+-- stock_daily_movement(baslangic, bitis, stand)
+--   Bir tarih aralığındaki HER sayım için o güne ait eksilen miktarı verir.
+--   stand_stock_report tek gün/tek stand içindir; bu geriye dönük döküm için.
+--
+--   Her sayım kendinden önceki sayımla karşılaştırılır (lag). Aralığın ilk
+--   gününün karşılaştırması aralıktan önceki sayıma göre yapılabilsin diye
+--   temel CTE tarihe göre süzülmez, süzme en sonda yapılır.
+--
+--   Karşılaştırma tabanı olmayan satırlar (ilk sayım, öncesinde transfer de
+--   yoksa) döndürülmez — orada "eksilen" diye bir kavram yoktur.
+-- ---------------------------------------------------------------------
+create or replace function public.stock_daily_movement(
+  p_from date,
+  p_to date,
+  p_stand_id uuid default null
+)
+returns table (
+  count_date    date,
+  stand_id      uuid,
+  stand_name    text,
+  variant_id    uuid,
+  product_name  text,
+  size_label    text,
+  unit          text,
+  prev_date     date,
+  prev_qty      numeric,
+  transfer_in   numeric,
+  transfer_out  numeric,
+  expected_qty  numeric,
+  counted_qty   numeric,
+  sold_qty      numeric,
+  sold_amount   numeric
+)
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  with sayimlar as (
+    select
+      sc.id,
+      sc.stand_id,
+      sc.count_date,
+      lag(sc.id)         over (partition by sc.stand_id order by sc.count_date) as prev_id,
+      lag(sc.count_date) over (partition by sc.stand_id order by sc.count_date) as prev_date
+    from public.stock_counts sc
+    where p_stand_id is null or sc.stand_id = p_stand_id
+  ),
+  kalemler as (
+    select s.id as count_id, s.stand_id, s.count_date, s.prev_id, s.prev_date,
+           i.variant_id, i.quantity as counted
+    from sayimlar s
+    join public.stock_count_items i on i.count_id = s.id
+  ),
+  hareketler as (
+    select t.stand_id, ti.variant_id, t.transfer_date,
+           sum(case when t.direction = 'in'  then ti.quantity else 0 end) as tin,
+           sum(case when t.direction = 'out' then ti.quantity else 0 end) as tout
+    from public.stock_transfers t
+    join public.stock_transfer_items ti on ti.transfer_id = t.id
+    group by t.stand_id, ti.variant_id, t.transfer_date
+  )
+  select
+    k.count_date,
+    k.stand_id,
+    st.name,
+    k.variant_id,
+    p.name,
+    v.size_label,
+    v.unit,
+    k.prev_date,
+    coalesce(pi.quantity, 0),
+    m.tin,
+    m.tout,
+    coalesce(pi.quantity, 0) + m.tin - m.tout                                   as expected_qty,
+    k.counted,
+    coalesce(pi.quantity, 0) + m.tin - m.tout - k.counted                       as sold_qty,
+    (coalesce(pi.quantity, 0) + m.tin - m.tout - k.counted) * coalesce(v.price, 0) as sold_amount
+  from kalemler k
+  join public.stands st           on st.id = k.stand_id
+  join public.product_variants v  on v.id = k.variant_id
+  join public.products p          on p.id = v.product_id
+  left join public.stock_count_items pi
+         on pi.count_id = k.prev_id and pi.variant_id = k.variant_id
+  cross join lateral (
+    select coalesce(sum(h.tin), 0) as tin, coalesce(sum(h.tout), 0) as tout
+    from hareketler h
+    where h.stand_id = k.stand_id
+      and h.variant_id = k.variant_id
+      and h.transfer_date > coalesce(k.prev_date, '-infinity'::date)
+      and h.transfer_date <= k.count_date
+  ) m
+  where k.count_date between p_from and p_to
+    and (k.prev_date is not null or m.tin <> 0 or m.tout <> 0)
+  order by k.count_date desc, st.sort_order, st.name, p.sort_order, v.sort_order;
+$$;
+
+-- ---------------------------------------------------------------------
 -- Kasa özetleri
 --   Nakit bakiye = toplam nakit ciro + hareketlerin işaretli toplamı.
 --   POS tutarları bankaya gittiği için nakit bakiyeye dahil edilmez.

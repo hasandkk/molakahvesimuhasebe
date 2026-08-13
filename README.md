@@ -11,7 +11,7 @@ React + Vite + TypeScript + Tailwind, arka planda Supabase (Postgres + Auth).
 | **Vardiya**  | Gün seç → her standa çalışan ata → gruba atılacak mesajı tek tuşla kopyala. Standart vardiyalar 08:00–15:30 ve 15:30–23:00; saatler her atama için tek tek değiştirilebilir. Aynı vardiyada birden fazla kişi çalışabilir. Eğitime gelenler ayrı tür olarak yazılır, saat girmek zorunlu değildir. “Bir önceki günü kopyala” kısayolu var |
 | **Kasa**     | Stand bazlı gün sonu nakit/POS girişi · para çekme, gider, kasaya giriş, bankaya yatırma hareketleri · fiziki kasa sayımı ve açık/fazla tespiti |
 | **Stok**     | Akşam sayımı (100g/250g/500g/1kg/dökme) · depodan standa mal transferi · beklenen–sayılan farkı ve tahmini satış tutarı |
-| **Raporlar** | Tarih aralığında stand bazlı ciro, kim ne kadar çekti, gider kalemleri, çalışan başına vardiya sayısı |
+| **Raporlar** | Üç sekme: **Özet** (stand bazlı ciro, kim ne kadar çekti, gider kalemleri) · **Vardiya geçmişi** (gün gün kim hangi standda, hangi saatte; çalışana göre süzülebilir) · **Stok geçmişi** (hangi gün hangi standda hangi üründen ne kadar eksildi) |
 | **Tanımlar** | Stand, çalışan ve kahve çeşidi/fiyat yönetimi |
 
 Stand sayısı sabit değil — “Tanımlar” ekranından istediğin kadar stand ekler,
