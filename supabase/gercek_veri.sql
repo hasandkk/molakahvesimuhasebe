@@ -80,12 +80,15 @@ cross join (values
 where p.name = 'Mola Kahvesi';
 
 -- ---------------------------------------------------------------------
--- 5) Açılış stok sayımı — bugün tarihli
---    Yarın akşam sayım girdiğinde "eksilen" bu rakamlara göre hesaplanır.
+-- 5) Açılış stok sayımı — DÜN tarihli
+--    Verdiğin rakamlar "bugüne başlarken elimizde olan stok" demek. Dün
+--    akşamın kapanış sayımı olarak yazılırsa, bugün akşam sayım girdiğinde
+--    beklenen stok bu rakamlar olur ve "eksilen" doğrudan bugünün satışını
+--    verir. Bugüne yazılsaydı bugünün ekranında beklenen 0 görünürdü.
 -- ---------------------------------------------------------------------
 with sayimlar as (
   insert into public.stock_counts (count_date, stand_id, note)
-  select current_date, s.id, 'Açılış sayımı'
+  select current_date - 1, s.id, 'Açılış sayımı'
   from public.stands s
   returning id, stand_id
 ),
