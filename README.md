@@ -11,7 +11,7 @@ React + Vite + TypeScript + Tailwind, arka planda Supabase (Postgres + Auth).
 | **Vardiya**  | **Gün** görünümünde plan yapılır, **Hafta** görünümünde tüm hafta tek ekranda görülür. Standart vardiyalar 08:00–15:30 ve 15:30–23:00; saatler değiştirilebilir. Aynı vardiyada birden fazla kişi çalışabilir, eğitime gelenler ayrı tür olarak yazılır. Saat çakışması uyarı verir. Mesaj stand bazlı veya toplu kopyalanır |
 | **Kasa**     | Stand bazlı gün sonu nakit/POS girişi · para çekme, gider, kasaya giriş, bankaya yatırma hareketleri · fiziki kasa sayımı ve açık/fazla tespiti |
 | **Stok**     | Akşam sayımı (100g/250g/500g/1kg/dökme) · depodan standa mal transferi · beklenen–sayılan farkı ve tahmini satış tutarı |
-| **Raporlar** | Üç sekme: **Özet** (stand bazlı ciro, kim ne kadar çekti, gider kalemleri) · **Vardiya geçmişi** (gün gün kim hangi standda, hangi saatte; çalışana göre süzülebilir) · **Stok geçmişi** (hangi gün hangi standda hangi üründen ne kadar eksildi) |
+| **Raporlar** | Üç sekme: **Özet** (stand bazlı ciro, kim ne kadar çekti, gider kalemleri) · **Vardiya geçmişi** (gün gün kim hangi standda, hangi saatte; çalışana göre süzülebilir) · **Stok geçmişi** (hangi gün hangi standda hangi üründen ne kadar eksildi) · **Maaş** (kademeli yevmiye + yemek + prim hesabı) |
 | **Tanımlar** | Stand, çalışan ve kahve çeşidi/fiyat yönetimi |
 
 Stand sayısı sabit değil — “Tanımlar” ekranından istediğin kadar stand ekler,
@@ -49,6 +49,26 @@ diğerinde. Yasak olan **saatlerin çakışması**. Bitişik vardiyalar (12:00'd
 biten ve 12:00'de başlayan) çakışma sayılmaz. Çakışan kişi ekleme listesinde
 seçilemez ve sebebi yazar; kayıtlı planda çakışma varsa ekranın üstünde
 kırmızı uyarı çıkar.
+
+### Maaş mantığı
+
+```
+1. gün                      -> ilk gün ücreti (varsayılan 0), yemek yok
+sonraki N gün (varsayılan 3) -> kademe 1 ücreti (varsayılan 1.000 ₺) + yemek
+devamı                       -> kademe 2 ücreti (varsayılan 1.500 ₺) + yemek
+```
+
+Tutarların hepsi “Raporlar → Maaş → Ücret kademeleri” ekranından değiştirilebilir.
+Bir çalışana özel ücret vermek istersen “Tanımlar → Çalışanlar” ekranındaki yevmiye
+alanını doldur; o kişi son kademede genel tutar yerine kendi ücretini alır.
+
+Güne özel **prim** yazılabilir; eksi değer kesinti anlamına gelir.
+
+İki önemli davranış:
+
+- **Kademe sayacı kişinin işe başladığı ilk günden işler**, seçilen tarih aralığından
+  değil. Yoksa her ay herkes yeniden “ilk gün” olurdu.
+- **Aynı gün iki vardiya çalışılsa da bir gün sayılır** — ücret günlük.
 
 ### Kasa mantığı
 

@@ -51,6 +51,15 @@ export function fetchAllStands(): Promise<Stand[]> {
   })
 }
 
+/** Geçmiş raporlarda pasifleştirilmiş çalışanlar da görünmeli. */
+export function fetchAllEmployees(): Promise<Employee[]> {
+  return cached('employees:all', async () => {
+    const { data, error } = await supabase.from('employees').select('*').order('full_name')
+    if (error) throw error
+    return (data ?? []) as Employee[]
+  })
+}
+
 export function fetchActiveEmployees(): Promise<Employee[]> {
   return cached('employees:active', async () => {
     const { data, error } = await supabase

@@ -165,6 +165,94 @@ create index if not exists shift_assignments_stand_idx on public.shift_assignmen
 create index if not exists shift_assignments_employee_idx on public.shift_assignments (employee_id);
 
 -- ---------------------------------------------------------------------
+-- payroll_settings — maaş kademeleri. Tek satırdır (id her zaman true).
+--   1. gün                         -> first_day_wage / first_day_meal
+--   sonraki tier1_days gün          -> tier1_wage + meal_wage
+--   ondan sonrası                   -> tier2_wage + meal_wage
+--   Çalışana özel ücret girilmişse (employees.daily_wage) son kademede
+--   tier2_wage yerine o kullanılır.
+-- ---------------------------------------------------------------------
+create table if not exists public.payroll_settings (
+  id              boolean primary key default true check (id),
+  first_day_wage  numeric(12,2) not null default 0,
+  first_day_meal  numeric(12,2) not null default 0,
+  tier1_days      int           not null default 3 check (tier1_days >= 0),
+  tier1_wage      numeric(12,2) not null default 1000,
+  tier2_wage      numeric(12,2) not null default 1500,
+  meal_wage       numeric(12,2) not null default 100,
+  updated_at      timestamptz   not null default now()
+);
+
+insert into public.payroll_settings (id) values (true) on conflict (id) do nothing;
+
+drop trigger if exists payroll_settings_updated_at on public.payroll_settings;
+create trigger payroll_settings_updated_at
+  before update on public.payroll_settings
+  for each row execute function public.set_updated_at();
+
+-- ---------------------------------------------------------------------
+-- employee_bonuses — güne özel prim. Eksi değer kesinti anlamına gelir.
+-- ---------------------------------------------------------------------
+create table if not exists public.employee_bonuses (
+  id           uuid primary key default gen_random_uuid(),
+  work_date    date not null,
+  employee_id  uuid not null references public.employees(id) on delete cascade,
+  amount       numeric(12,2) not null check (amount <> 0),
+  note         text,
+  created_by   uuid references auth.users(id) default auth.uid(),
+  created_at   timestamptz not null default now(),
+  unique (work_date, employee_id)
+);
+create index if not exists employee_bonuses_date_idx on public.employee_bonuses (work_date);
+create index if not exists employee_bonuses_employee_idx on public.employee_bonuses (employee_id);
+
+-- ---------------------------------------------------------------------
+-- payroll(baslangic, bitis)
+--   Aralıktaki her çalışma günü için, o günün kişinin İŞE BAŞLAMASINDAN
+--   itibaren kaçıncı günü olduğunu verir. Kademe sayacı seçilen aralıktan
+--   değil, kişinin ilk gününden işlemeli — yoksa her ay herkes yeniden
+--   "ilk gün" olur. Bu yüzden sıra numarası tüm geçmiş üzerinden
+--   hesaplanır, süzme en sonda yapılır.
+--
+--   Aynı gün iki vardiya çalışılsa da bir gün sayılır; shifts kolonu kaç
+--   vardiya olduğunu bilgi olarak taşır.
+-- ---------------------------------------------------------------------
+create or replace function public.payroll(p_from date, p_to date)
+returns table (
+  employee_id  uuid,
+  full_name    text,
+  work_date    date,
+  day_index    int,
+  shifts       int,
+  is_training  boolean
+)
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  with gunler as (
+    select sa.employee_id,
+           sa.work_date,
+           count(*)                        as shifts,
+           bool_and(sa.kind = 'egitim')    as is_training
+    from public.shift_assignments sa
+    group by sa.employee_id, sa.work_date
+  ),
+  sirali as (
+    select g.*,
+           row_number() over (partition by g.employee_id order by g.work_date) as day_index
+    from gunler g
+  )
+  select s.employee_id, e.full_name, s.work_date,
+         s.day_index::int, s.shifts::int, s.is_training
+  from sirali s
+  join public.employees e on e.id = s.employee_id
+  where s.work_date between p_from and p_to
+  order by e.full_name, s.work_date;
+$$;
+
+-- ---------------------------------------------------------------------
 -- daily_revenues — stand başına gün sonu nakit / POS cirosu
 -- ---------------------------------------------------------------------
 create table if not exists public.daily_revenues (
@@ -533,7 +621,8 @@ declare
   tables text[] := array[
     'stands', 'employees', 'products', 'product_variants',
     'shift_assignments', 'daily_revenues', 'cash_movements', 'cash_counts',
-    'stock_counts', 'stock_count_items', 'stock_transfers', 'stock_transfer_items'
+    'stock_counts', 'stock_count_items', 'stock_transfers', 'stock_transfer_items',
+    'payroll_settings', 'employee_bonuses'
   ];
 begin
   foreach t in array tables loop

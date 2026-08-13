@@ -1,19 +1,22 @@
 import { useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useQuery } from '../lib/useQuery'
-import { fetchActiveEmployees, fetchAllStands } from '../lib/refData'
+import { fetchAllEmployees, fetchAllStands } from '../lib/refData'
 import { formatLong, formatShort, startOfMonth, today } from '../lib/date'
-import { money, qty } from '../lib/format'
+import { money, parseNumber, qty } from '../lib/format'
 import {
   MOVEMENT_LABELS,
   type CashMovement,
   type Employee,
+  type EmployeeBonus,
+  type PayrollRow,
+  type PayrollSettings,
   type Stand,
   type StockMovementRow,
 } from '../lib/types'
-import { Card, Empty, ErrorBox, Field, Input, Select, Spinner, Stat, Tabs } from '../components/ui'
+import { Button, Card, Empty, ErrorBox, Field, Input, Select, Spinner, Stat, Tabs } from '../components/ui'
 
-type Tab = 'ozet' | 'vardiya' | 'stok'
+type Tab = 'ozet' | 'vardiya' | 'stok' | 'maas'
 
 type RevenueRow = { business_date: string; stand_id: string; cash_amount: number; pos_amount: number }
 
@@ -35,14 +38,18 @@ type Data = {
   movements: CashMovement[]
   shifts: ShiftRow[]
   stock: StockMovementRow[]
+  payroll: PayrollRow[]
+  settings: PayrollSettings | null
+  bonuses: EmployeeBonus[]
 }
 
 const hhmm = (t: string | null) => (t ? t.slice(0, 5) : '')
 
 async function load(from: string, to: string): Promise<Data> {
-  const [stands, employees, revenues, movements, shifts, stock] = await Promise.all([
+  const [stands, employees, revenues, movements, shifts, stock, payroll, settings, bonuses] =
+    await Promise.all([
     fetchAllStands(),
-    fetchActiveEmployees(),
+    fetchAllEmployees(),
     supabase
       .from('daily_revenues')
       .select('business_date, stand_id, cash_amount, pos_amount')
@@ -55,9 +62,14 @@ async function load(from: string, to: string): Promise<Data> {
       .gte('work_date', from)
       .lte('work_date', to),
     supabase.rpc('stock_daily_movement', { p_from: from, p_to: to, p_stand_id: null }),
+    supabase.rpc('payroll', { p_from: from, p_to: to }),
+    supabase.from('payroll_settings').select('*').limit(1),
+    supabase.from('employee_bonuses').select('*').gte('work_date', from).lte('work_date', to),
   ])
 
-  const err = revenues.error ?? movements.error ?? shifts.error ?? stock.error
+  const err =
+    revenues.error ?? movements.error ?? shifts.error ?? stock.error ??
+    payroll.error ?? settings.error ?? bonuses.error
   if (err) throw err
 
   return {
@@ -67,6 +79,9 @@ async function load(from: string, to: string): Promise<Data> {
     movements: (movements.data ?? []) as CashMovement[],
     shifts: (shifts.data ?? []) as unknown as ShiftRow[],
     stock: (stock.data ?? []) as StockMovementRow[],
+    payroll: (payroll.data ?? []) as PayrollRow[],
+    settings: ((settings.data ?? [])[0] as PayrollSettings | undefined) ?? null,
+    bonuses: (bonuses.data ?? []) as EmployeeBonus[],
   }
 }
 
@@ -74,7 +89,7 @@ export default function Reports() {
   const [tab, setTab] = useState<Tab>('ozet')
   const [from, setFrom] = useState(startOfMonth(today()))
   const [to, setTo] = useState(today())
-  const { data, loading, error } = useQuery(() => load(from, to), [from, to])
+  const { data, loading, error, reload } = useQuery(() => load(from, to), [from, to])
 
   return (
     <>
@@ -96,6 +111,7 @@ export default function Reports() {
           { id: 'ozet', label: 'Özet' },
           { id: 'vardiya', label: 'Vardiya geçmişi' },
           { id: 'stok', label: 'Stok geçmişi' },
+          { id: 'maas', label: 'Maaş' },
         ]}
       />
 
@@ -105,6 +121,7 @@ export default function Reports() {
       {data && tab === 'ozet' && <SummaryTab data={data} />}
       {data && tab === 'vardiya' && <ShiftHistoryTab data={data} />}
       {data && tab === 'stok' && <StockHistoryTab data={data} />}
+      {data && tab === 'maas' && <PayrollTab data={data} from={from} to={to} onChanged={reload} />}
     </>
   )
 }
@@ -155,15 +172,13 @@ function SummaryTab({ data }: { data: Data }) {
     return [...map.entries()].sort((a, b) => b[1] - a[1])
   }, [data])
 
-  /** Vardiya sayısı × yevmiye = o dönem ödenecek tutar. */
   const byEmployee = useMemo(() => {
-    const map = new Map<string, { name: string; shifts: number; trainings: number; wage: number | null }>()
+    const map = new Map<string, { name: string; shifts: number; trainings: number }>()
     for (const s of data.shifts) {
       const row = map.get(s.employee_id) ?? {
         name: s.employees?.full_name ?? '—',
         shifts: 0,
         trainings: 0,
-        wage: data.employees.find((e) => e.id === s.employee_id)?.daily_wage ?? null,
       }
       if (s.kind === 'egitim') row.trainings += 1
       else row.shifts += 1
@@ -171,8 +186,6 @@ function SummaryTab({ data }: { data: Data }) {
     }
     return [...map.values()].sort((a, b) => b.shifts - a.shifts)
   }, [data])
-
-  const wageTotal = byEmployee.reduce((s, r) => s + r.shifts * Number(r.wage ?? 0), 0)
 
   return (
     <>
@@ -272,45 +285,27 @@ function SummaryTab({ data }: { data: Data }) {
         </Card>
       </div>
 
-      <Card
-        title="Çalışan başına vardiya"
-        action={
-          wageTotal > 0 && (
-            <span className="text-xs text-stone-500">
-              toplam <strong className="tabular-nums text-stone-800">{money(wageTotal)}</strong>
-            </span>
-          )
-        }
-      >
+      <Card title="Çalışan başına vardiya">
         {byEmployee.length === 0 ? (
           <Empty>Bu aralıkta vardiya kaydı yok.</Empty>
         ) : (
           <>
             <ul className="divide-y divide-stone-100 text-sm">
               {byEmployee.map((row) => (
-                <li key={row.name} className="flex items-baseline justify-between gap-3 py-2">
+                <li key={row.name} className="flex justify-between gap-3 py-2">
                   <span className="min-w-0 truncate">{row.name}</span>
-                  <span className="shrink-0 text-right">
-                    <span className="tabular-nums text-stone-600">
-                      {row.shifts} vardiya
-                      {row.trainings > 0 && (
-                        <span className="ml-1 text-amber-700">· {row.trainings} eğitim</span>
-                      )}
-                    </span>
-                    {row.wage ? (
-                      <span className="block text-xs tabular-nums text-stone-500">
-                        × {money(row.wage)} = <strong>{money(row.shifts * Number(row.wage))}</strong>
-                      </span>
-                    ) : null}
+                  <span className="shrink-0 tabular-nums text-stone-600">
+                    {row.shifts} vardiya
+                    {row.trainings > 0 && (
+                      <span className="ml-1 text-amber-700">· {row.trainings} eğitim</span>
+                    )}
                   </span>
                 </li>
               ))}
             </ul>
-            {wageTotal === 0 && (
-              <p className="mt-3 text-xs text-stone-500">
-                Ödenecek tutarı da görmek istersen “Tanımlar → Çalışanlar” ekranından yevmiye gir.
-              </p>
-            )}
+            <p className="mt-3 text-xs text-stone-500">
+              Ödenecek tutar için “Maaş” sekmesine bak — kademeli ücret, yemek ve prim orada hesaplanır.
+            </p>
           </>
         )}
       </Card>
@@ -592,5 +587,415 @@ function StockHistoryTab({ data }: { data: Data }) {
         girilmemiş bir transferi veya sayım hatasını gösterir.
       </p>
     </>
+  )
+}
+
+/* ----------------------------------------------------------------- Maaş */
+
+function PayrollTab({
+  data,
+  from,
+  to,
+  onChanged,
+}: {
+  data: Data
+  from: string
+  to: string
+  onChanged: () => void
+}) {
+  const [openSettings, setOpenSettings] = useState(false)
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const s = data.settings
+
+  /**
+   * 1. gün ücretsiz → sonraki tier1_days gün tier1 → devamı tier2.
+   * Çalışana özel ücret girilmişse son kademede o geçerli.
+   */
+  const rateFor = (dayIndex: number, employeeWage: number | null) => {
+    if (!s) return { wage: 0, meal: 0 }
+    if (dayIndex === 1) return { wage: Number(s.first_day_wage), meal: Number(s.first_day_meal) }
+    if (dayIndex <= 1 + s.tier1_days) return { wage: Number(s.tier1_wage), meal: Number(s.meal_wage) }
+    return {
+      wage: employeeWage !== null ? Number(employeeWage) : Number(s.tier2_wage),
+      meal: Number(s.meal_wage),
+    }
+  }
+
+  type DayLine = {
+    date: string
+    dayIndex: number | null
+    wage: number
+    meal: number
+    bonus: number
+    isTraining: boolean
+  }
+
+  const rows = useMemo(() => {
+    const map = new Map<
+      string,
+      { id: string; name: string; days: DayLine[]; wageTotal: number; mealTotal: number; bonusTotal: number }
+    >()
+
+    const bonusOf = (employeeId: string, date: string) =>
+      Number(data.bonuses.find((b) => b.employee_id === employeeId && b.work_date === date)?.amount ?? 0)
+
+    for (const p of data.payroll) {
+      const employeeWage = data.employees.find((e) => e.id === p.employee_id)?.daily_wage ?? null
+      const { wage, meal } = rateFor(p.day_index, employeeWage)
+      const bonus = bonusOf(p.employee_id, p.work_date)
+
+      const row =
+        map.get(p.employee_id) ??
+        { id: p.employee_id, name: p.full_name, days: [], wageTotal: 0, mealTotal: 0, bonusTotal: 0 }
+      row.days.push({
+        date: p.work_date,
+        dayIndex: p.day_index,
+        wage,
+        meal,
+        bonus,
+        isTraining: p.is_training,
+      })
+      row.wageTotal += wage
+      row.mealTotal += meal
+      row.bonusTotal += bonus
+      map.set(p.employee_id, row)
+    }
+
+    // Çalışma günüyle eşleşmeyen primler de hesaba katılmalı
+    for (const b of data.bonuses) {
+      const row = map.get(b.employee_id)
+      const matched = row?.days.some((d) => d.date === b.work_date)
+      if (matched) continue
+      const name = data.employees.find((e) => e.id === b.employee_id)?.full_name ?? '—'
+      const target =
+        row ?? { id: b.employee_id, name, days: [], wageTotal: 0, mealTotal: 0, bonusTotal: 0 }
+      target.days.push({
+        date: b.work_date,
+        dayIndex: null,
+        wage: 0,
+        meal: 0,
+        bonus: Number(b.amount),
+        isTraining: false,
+      })
+      target.bonusTotal += Number(b.amount)
+      map.set(b.employee_id, target)
+    }
+
+    return [...map.values()]
+      .map((r) => ({
+        ...r,
+        days: [...r.days].sort((a, b) => a.date.localeCompare(b.date)),
+        total: r.wageTotal + r.mealTotal + r.bonusTotal,
+      }))
+      .sort((a, b) => b.total - a.total)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data])
+
+  const grand = rows.reduce(
+    (acc, r) => ({
+      wage: acc.wage + r.wageTotal,
+      meal: acc.meal + r.mealTotal,
+      bonus: acc.bonus + r.bonusTotal,
+      total: acc.total + r.total,
+    }),
+    { wage: 0, meal: 0, bonus: 0, total: 0 },
+  )
+
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label="Yevmiye" value={money(grand.wage)} />
+        <Stat label="Yemek" value={money(grand.meal)} />
+        <Stat label="Prim" value={money(grand.bonus)} tone={grand.bonus < 0 ? 'bad' : 'default'} />
+        <Stat label="Toplam ödenecek" value={money(grand.total)} tone="warn" />
+      </div>
+
+      <SettingsCard
+        settings={s}
+        open={openSettings}
+        onToggle={() => setOpenSettings((v) => !v)}
+        onSaved={onChanged}
+      />
+
+      <BonusCard data={data} from={from} to={to} onChanged={onChanged} />
+
+      <Card title="Çalışan başına hesap">
+        {rows.length === 0 ? (
+          <Empty>Bu aralıkta çalışma kaydı yok.</Empty>
+        ) : (
+          <ul className="divide-y divide-stone-200">
+            {rows.map((r) => {
+              const isOpen = expanded === r.id
+              const workedDays = r.days.filter((d) => d.dayIndex !== null).length
+              return (
+                <li key={r.id} className="py-2.5">
+                  <button
+                    onClick={() => setExpanded(isOpen ? null : r.id)}
+                    className="flex w-full items-baseline justify-between gap-3 text-left"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-stone-800">{r.name}</span>
+                      <span className="text-xs text-stone-500">
+                        {workedDays} gün · yevmiye {money(r.wageTotal)} · yemek {money(r.mealTotal)}
+                        {r.bonusTotal !== 0 && ` · prim ${money(r.bonusTotal)}`}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className="block font-semibold tabular-nums text-stone-900">
+                        {money(r.total)}
+                      </span>
+                      <span className="text-[11px] text-brand-700">{isOpen ? 'gizle ▴' : 'gün gün ▾'}</span>
+                    </span>
+                  </button>
+
+                  {isOpen && (
+                    <ul className="mt-2 space-y-1 rounded-xl bg-stone-50 p-2">
+                      {r.days.map((d) => (
+                        <li key={d.date} className="flex items-center justify-between gap-2 text-xs">
+                          <span className="tabular-nums text-stone-600">
+                            {formatShort(d.date)}
+                            {d.dayIndex !== null && (
+                              <span className="ml-1 text-stone-400">{d.dayIndex}. gün</span>
+                            )}
+                            {d.isTraining && <span className="ml-1 text-amber-700">eğitim</span>}
+                          </span>
+                          <span className="shrink-0 tabular-nums text-stone-700">
+                            {money(d.wage)}
+                            {d.meal > 0 && <span className="text-stone-400"> +{money(d.meal)}</span>}
+                            {d.bonus !== 0 && (
+                              <span className={d.bonus < 0 ? 'text-red-700' : 'text-emerald-700'}>
+                                {' '}
+                                {d.bonus > 0 ? '+' : '−'}
+                                {money(Math.abs(d.bonus))}
+                              </span>
+                            )}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </Card>
+
+      <p className="text-xs text-stone-500">
+        Aynı gün iki vardiya çalışılsa da bir gün sayılır. Kademe sayacı kişinin işe başladığı ilk
+        günden işler, seçtiğin tarih aralığından değil.
+      </p>
+    </>
+  )
+}
+
+function SettingsCard({
+  settings,
+  open,
+  onToggle,
+  onSaved,
+}: {
+  settings: PayrollSettings | null
+  open: boolean
+  onToggle: () => void
+  onSaved: () => void
+}) {
+  const [draft, setDraft] = useState<Record<string, string>>({})
+  const [busy, setBusy] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const value = (key: keyof PayrollSettings) =>
+    draft[key] ?? (settings ? String(settings[key]) : '')
+
+  const fields: { key: keyof PayrollSettings; label: string; hint?: string }[] = [
+    { key: 'first_day_wage', label: 'İlk gün ücreti (₺)' },
+    { key: 'first_day_meal', label: 'İlk gün yemek (₺)' },
+    { key: 'tier1_days', label: 'İlk günden sonra kaç gün', hint: 'bu kadar gün düşük ücret' },
+    { key: 'tier1_wage', label: 'Bu günlerin ücreti (₺)' },
+    { key: 'tier2_wage', label: 'Sonraki günlerin ücreti (₺)' },
+    { key: 'meal_wage', label: 'Günlük yemek (₺)' },
+  ]
+
+  async function save() {
+    setBusy(true)
+    setError(null)
+    const payload: Record<string, number> = {}
+    for (const f of fields) payload[f.key] = parseNumber(value(f.key))
+    const { error } = await supabase.from('payroll_settings').update(payload).eq('id', true)
+    if (error) setError(error.message)
+    else {
+      setDraft({})
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+      onSaved()
+    }
+    setBusy(false)
+  }
+
+  return (
+    <Card
+      title="Ücret kademeleri"
+      action={
+        <button onClick={onToggle} className="text-xs font-medium text-brand-700">
+          {open ? 'gizle ▴' : 'değiştir ▾'}
+        </button>
+      }
+    >
+      {!settings ? (
+        <Empty>Ayarlar bulunamadı — 0001_init.sql'i tekrar çalıştır.</Empty>
+      ) : !open ? (
+        <p className="text-sm text-stone-600">
+          İlk gün <strong>{money(settings.first_day_wage)}</strong> (yemek{' '}
+          {money(settings.first_day_meal)}) · sonraki <strong>{settings.tier1_days} gün</strong>{' '}
+          <strong>{money(settings.tier1_wage)}</strong> · devamı{' '}
+          <strong>{money(settings.tier2_wage)}</strong> · günlük yemek{' '}
+          <strong>{money(settings.meal_wage)}</strong>
+        </p>
+      ) : (
+        <>
+          {error && (
+            <div className="mb-3">
+              <ErrorBox message={error} />
+            </div>
+          )}
+          <div className="grid gap-3 sm:grid-cols-3">
+            {fields.map((f) => (
+              <Field key={f.key} label={f.label} hint={f.hint}>
+                <Input
+                  inputMode="decimal"
+                  value={value(f.key)}
+                  onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
+                />
+              </Field>
+            ))}
+          </div>
+          <Button className="mt-3 w-full sm:w-auto" onClick={() => void save()} disabled={busy}>
+            {saved ? '✓ Kaydedildi' : 'Kademeleri kaydet'}
+          </Button>
+          <p className="mt-2 text-xs text-stone-500">
+            Çalışana özel ücret vermek istersen “Tanımlar → Çalışanlar” ekranındaki yevmiye alanını
+            doldur; o kişi son kademede bu tutar yerine kendi ücretini alır.
+          </p>
+        </>
+      )}
+    </Card>
+  )
+}
+
+function BonusCard({
+  data,
+  from,
+  to,
+  onChanged,
+}: {
+  data: Data
+  from: string
+  to: string
+  onChanged: () => void
+}) {
+  const [date, setDate] = useState(to)
+  const [employeeId, setEmployeeId] = useState('')
+  const [amount, setAmount] = useState('')
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function add() {
+    const value = parseNumber(amount)
+    if (!employeeId) {
+      setError('Çalışan seç.')
+      return
+    }
+    if (value === 0) {
+      setError('Tutar 0 olamaz.')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    const { error } = await supabase
+      .from('employee_bonuses')
+      .upsert(
+        { work_date: date, employee_id: employeeId, amount: value, note: note.trim() || null },
+        { onConflict: 'work_date,employee_id' },
+      )
+    if (error) setError(error.message)
+    else {
+      setAmount('')
+      setNote('')
+      onChanged()
+    }
+    setBusy(false)
+  }
+
+  async function remove(id: string) {
+    setBusy(true)
+    const { error } = await supabase.from('employee_bonuses').delete().eq('id', id)
+    if (error) setError(error.message)
+    else onChanged()
+    setBusy(false)
+  }
+
+  const nameOf = (id: string) => data.employees.find((e) => e.id === id)?.full_name ?? '—'
+  const list = [...data.bonuses].sort((a, b) => b.work_date.localeCompare(a.work_date))
+
+  return (
+    <Card title="Prim">
+      {error && (
+        <div className="mb-3">
+          <ErrorBox message={error} />
+        </div>
+      )}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Tarih">
+          <Input type="date" value={date} min={from} max={to} onChange={(e) => setDate(e.target.value)} />
+        </Field>
+        <Field label="Çalışan">
+          <Select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
+            <option value="">Seç…</option>
+            {data.employees.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.full_name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Tutar (₺)" hint="Eksi yazarsan kesinti olur">
+          <Input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
+        </Field>
+        <Field label="Açıklama">
+          <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="İsteğe bağlı" />
+        </Field>
+      </div>
+      <Button className="mt-3 w-full sm:w-auto" onClick={() => void add()} disabled={busy}>
+        Prim ekle
+      </Button>
+
+      {list.length > 0 && (
+        <ul className="mt-4 divide-y divide-stone-100 text-sm">
+          {list.map((b) => (
+            <li key={b.id} className="flex items-center justify-between gap-3 py-2">
+              <span className="min-w-0 truncate">
+                {formatShort(b.work_date)} · {nameOf(b.employee_id)}
+                {b.note ? <span className="text-stone-500"> · {b.note}</span> : null}
+              </span>
+              <span className="flex shrink-0 items-center gap-2">
+                <span
+                  className={`tabular-nums font-semibold ${
+                    Number(b.amount) < 0 ? 'text-red-700' : 'text-emerald-700'
+                  }`}
+                >
+                  {Number(b.amount) > 0 ? '+' : '−'}
+                  {money(Math.abs(Number(b.amount)))}
+                </span>
+                <Button variant="ghost" size="icon" onClick={() => void remove(b.id)} disabled={busy}>
+                  ✕
+                </Button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   )
 }

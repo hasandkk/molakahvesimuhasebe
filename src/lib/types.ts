@@ -144,6 +144,34 @@ export type StockMovementRow = {
   sold_amount: number
 }
 
+/** payroll() RPC satırı — bir çalışanın bir çalışma günü */
+export type PayrollRow = {
+  employee_id: string
+  full_name: string
+  work_date: string
+  /** Kişinin işe başlamasından itibaren kaçıncı çalışma günü (1'den başlar) */
+  day_index: number
+  shifts: number
+  is_training: boolean
+}
+
+export type PayrollSettings = {
+  first_day_wage: number
+  first_day_meal: number
+  tier1_days: number
+  tier1_wage: number
+  tier2_wage: number
+  meal_wage: number
+}
+
+export type EmployeeBonus = {
+  id: string
+  work_date: string
+  employee_id: string
+  amount: number
+  note: string | null
+}
+
 export const MOVEMENT_LABELS: Record<CashMovementType, string> = {
   cekim: 'Para çekme',
   gider: 'Gider',
