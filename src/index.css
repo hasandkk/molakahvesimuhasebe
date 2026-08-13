@@ -1,0 +1,33 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-brand-50: #faf6f2;
+  --color-brand-100: #f2e8de;
+  --color-brand-200: #e3cfbb;
+  --color-brand-300: #cfae8f;
+  --color-brand-400: #b98a64;
+  --color-brand-500: #a06e47;
+  --color-brand-600: #85573a;
+  --color-brand-700: #6b4531;
+  --color-brand-800: #57392c;
+  --color-brand-900: #3d2a21;
+}
+
+html {
+  color-scheme: light;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  @apply bg-stone-100 text-stone-900 antialiased;
+}
+
+/* Sayısal alanlarda mobil klavyeyi rahat kullanmak için artırma oklarını gizle */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+}
