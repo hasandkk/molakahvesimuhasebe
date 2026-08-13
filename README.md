@@ -74,8 +74,16 @@ devamı                       -> kademe 2 ücreti (varsayılan 1.500 ₺) + yeme
 ```
 
 Tutarların hepsi “Raporlar → Maaş → Ücret kademeleri” ekranından değiştirilebilir.
-Bir çalışana özel ücret vermek istersen “Tanımlar → Çalışanlar” ekranındaki yevmiye
-alanını doldur; o kişi son kademede genel tutar yerine kendi ücretini alır.
+
+Her çalışan için **ücret modeli** seçilir (“Tanımlar → Çalışanlar”):
+
+- **Kademeli** — yukarıdaki sıra uygulanır. Yeni ve deneyimsiz işe alımlar için.
+- **İlk günden tam ücret** — eğitim günü ve düşük kademe atlanır, ilk günden
+  itibaren tam ücret + yemek. Deneyimli işe alımlar ve program kurulmadan önce
+  çalışmaya başlamış kişiler için.
+
+Bir çalışana özel tutar vermek istersen aynı ekrandaki yevmiye alanını doldur;
+o kişi tam ücret olarak genel tutar yerine kendi ücretini alır.
 
 Güne özel **prim** yazılabilir; eksi değer kesinti anlamına gelir.
 

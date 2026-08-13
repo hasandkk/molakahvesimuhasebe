@@ -6,11 +6,24 @@ export type Stand = {
   is_active: boolean
 }
 
+/**
+ * 'kademeli' — ilk gün ücretsiz, sonra kademe kademe artar
+ * 'tam'      — ilk günden itibaren tam ücret + yemek (deneyimli işe alım
+ *              ya da program kurulmadan önce başlamış kişi)
+ */
+export type WageMode = 'kademeli' | 'tam'
+
+export const WAGE_MODE_LABELS: Record<WageMode, string> = {
+  kademeli: 'Kademeli (eğitim → 3 gün → tam)',
+  tam: 'İlk günden tam ücret',
+}
+
 export type Employee = {
   id: string
   full_name: string
   phone: string | null
   daily_wage: number | null
+  wage_mode: WageMode
   note: string | null
   is_active: boolean
 }

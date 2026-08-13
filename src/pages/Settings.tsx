@@ -3,8 +3,8 @@ import { supabase } from '../lib/supabase'
 import { useQuery } from '../lib/useQuery'
 import { invalidateRefData } from '../lib/refData'
 import { money, parseNumber } from '../lib/format'
-import type { Employee, Product, ProductVariant, Stand } from '../lib/types'
-import { Button, Card, Empty, ErrorBox, Field, Input, Spinner, Tabs } from '../components/ui'
+import { WAGE_MODE_LABELS, type Employee, type Product, type ProductVariant, type Stand, type WageMode } from '../lib/types'
+import { Button, Card, Empty, ErrorBox, Field, Input, Select, Spinner, Tabs } from '../components/ui'
 
 type Tab = 'standlar' | 'calisanlar' | 'urunler'
 
@@ -124,6 +124,7 @@ function EmployeesPanel() {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [wage, setWage] = useState('')
+  const [mode, setMode] = useState<WageMode>('kademeli')
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const { data, loading, error, reload } = useQuery(async () => {
@@ -140,12 +141,26 @@ function EmployeesPanel() {
       full_name: name.trim(),
       phone: phone.trim() || null,
       daily_wage: wage.trim() ? parseNumber(wage) : null,
+      wage_mode: mode,
     })
     if (error) setActionError(error.message)
     else {
       setName('')
       setPhone('')
       setWage('')
+      setMode('kademeli')
+      invalidateRefData()
+      reload()
+    }
+    setBusy(false)
+  }
+
+  async function changeMode(employee: Employee, next: WageMode) {
+    setBusy(true)
+    setActionError(null)
+    const { error } = await supabase.from('employees').update({ wage_mode: next }).eq('id', employee.id)
+    if (error) setActionError(error.message)
+    else {
       invalidateRefData()
       reload()
     }
@@ -177,10 +192,23 @@ function EmployeesPanel() {
           <Field label="Telefon">
             <Input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" />
           </Field>
-          <Field label="Yevmiye (₺)">
+          <Field label="Yevmiye (₺)" hint="Boş bırakırsan genel tam ücret geçerli">
             <Input value={wage} onChange={(e) => setWage(e.target.value)} inputMode="decimal" />
           </Field>
         </div>
+        <Field label="Ücret modeli" className="mt-3">
+          <Select value={mode} onChange={(e) => setMode(e.target.value as WageMode)}>
+            {(Object.keys(WAGE_MODE_LABELS) as WageMode[]).map((k) => (
+              <option key={k} value={k}>
+                {WAGE_MODE_LABELS[k]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <p className="mt-1 text-xs text-stone-500">
+          Deneyimli birini alıyorsan “ilk günden tam ücret” seç; eğitim günü ve düşük kademe
+          uygulanmaz.
+        </p>
         <Button className="mt-3" onClick={() => void add()} disabled={busy}>
           Çalışan ekle
         </Button>
@@ -192,19 +220,41 @@ function EmployeesPanel() {
         {data && data.length === 0 && <Empty>Henüz çalışan yok.</Empty>}
         <ul className="divide-y divide-stone-100">
           {data?.map((employee) => (
-            <li key={employee.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-              <div>
-                <div className={employee.is_active ? 'text-stone-800' : 'text-stone-400 line-through'}>
-                  {employee.full_name}
+            <li key={employee.id} className="py-2.5 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div
+                    className={`truncate ${employee.is_active ? 'text-stone-800' : 'text-stone-400 line-through'}`}
+                  >
+                    {employee.full_name}
+                  </div>
+                  <div className="text-xs text-stone-500">
+                    {employee.phone ?? '—'}
+                    {employee.daily_wage ? ` · ${money(employee.daily_wage)}/gün` : ''}
+                  </div>
                 </div>
-                <div className="text-xs text-stone-500">
-                  {employee.phone ?? '—'}
-                  {employee.daily_wage ? ` · ${money(employee.daily_wage)}/gün` : ''}
-                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => void toggle(employee)}
+                  disabled={busy}
+                >
+                  {employee.is_active ? 'Pasifleştir' : 'Aktifleştir'}
+                </Button>
               </div>
-              <Button variant="secondary" size="sm" onClick={() => void toggle(employee)} disabled={busy}>
-                {employee.is_active ? 'Pasifleştir' : 'Aktifleştir'}
-              </Button>
+              <Select
+                className="mt-2 py-1.5 text-xs"
+                value={employee.wage_mode}
+                disabled={busy}
+                onChange={(e) => void changeMode(employee, e.target.value as WageMode)}
+              >
+                {(Object.keys(WAGE_MODE_LABELS) as WageMode[]).map((k) => (
+                  <option key={k} value={k}>
+                    {WAGE_MODE_LABELS[k]}
+                  </option>
+                ))}
+              </Select>
             </li>
           ))}
         </ul>

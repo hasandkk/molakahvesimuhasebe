@@ -105,16 +105,35 @@ create unique index if not exists stands_name_uniq on public.stands (lower(name)
 -- ---------------------------------------------------------------------
 -- employees — çalışanlar (sisteme giriş yapmazlar, sadece kayıtlıdırlar)
 -- ---------------------------------------------------------------------
+--   wage_mode = 'kademeli' -> ilk gün ücretsiz, sonra kademe kademe artar
+--   wage_mode = 'tam'      -> ilk günden itibaren tam ücret + yemek.
+--                             Deneyimli işe alımlar ve program kurulmadan
+--                             önce çalışmaya başlamış kişiler için.
+--   daily_wage doluysa son kademede genel tutar yerine o kullanılır.
 create table if not exists public.employees (
   id          uuid primary key default gen_random_uuid(),
   full_name   text not null,
   phone       text,
   daily_wage  numeric(12,2),
+  wage_mode   text not null default 'kademeli' check (wage_mode in ('kademeli', 'tam')),
   note        text,
   is_active   boolean not null default true,
   created_at  timestamptz not null default now()
 );
 create unique index if not exists employees_name_uniq on public.employees (lower(full_name));
+
+-- Betiğin önceki sürümünü çalıştırdıysan kolon burada eklenir.
+alter table public.employees
+  add column if not exists wage_mode text not null default 'kademeli';
+
+do $$
+begin
+  alter table public.employees
+    add constraint employees_wage_mode_check check (wage_mode in ('kademeli', 'tam'));
+exception
+  when duplicate_object then null;
+end;
+$$;
 
 -- ---------------------------------------------------------------------
 -- products / product_variants — kahve çeşitleri ve gramajları

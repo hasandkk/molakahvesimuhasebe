@@ -12,6 +12,7 @@ import {
   type PayrollRow,
   type PayrollSettings,
   type Stand,
+  type WageMode,
   type StockSaleRow,
   type StockVarianceRow,
 } from '../lib/types'
@@ -627,17 +628,17 @@ function PayrollTab({
   const s = data.settings
 
   /**
-   * 1. gün ücretsiz → sonraki tier1_days gün tier1 → devamı tier2.
-   * Çalışana özel ücret girilmişse son kademede o geçerli.
+   * kademeli: 1. gün ücretsiz → sonraki tier1_days gün tier1 → devamı tam ücret
+   * tam:      ilk günden itibaren tam ücret + yemek
+   * Çalışana özel ücret girilmişse tam ücret olarak o kullanılır.
    */
-  const rateFor = (dayIndex: number, employeeWage: number | null) => {
+  const rateFor = (dayIndex: number, employeeWage: number | null, mode: WageMode) => {
     if (!s) return { wage: 0, meal: 0 }
+    const fullWage = employeeWage !== null ? Number(employeeWage) : Number(s.tier2_wage)
+    if (mode === 'tam') return { wage: fullWage, meal: Number(s.meal_wage) }
     if (dayIndex === 1) return { wage: Number(s.first_day_wage), meal: Number(s.first_day_meal) }
     if (dayIndex <= 1 + s.tier1_days) return { wage: Number(s.tier1_wage), meal: Number(s.meal_wage) }
-    return {
-      wage: employeeWage !== null ? Number(employeeWage) : Number(s.tier2_wage),
-      meal: Number(s.meal_wage),
-    }
+    return { wage: fullWage, meal: Number(s.meal_wage) }
   }
 
   type DayLine = {
@@ -652,20 +653,36 @@ function PayrollTab({
   const rows = useMemo(() => {
     const map = new Map<
       string,
-      { id: string; name: string; days: DayLine[]; wageTotal: number; mealTotal: number; bonusTotal: number }
+      {
+        id: string
+        name: string
+        mode: WageMode
+        days: DayLine[]
+        wageTotal: number
+        mealTotal: number
+        bonusTotal: number
+      }
     >()
 
     const bonusOf = (employeeId: string, date: string) =>
       Number(data.bonuses.find((b) => b.employee_id === employeeId && b.work_date === date)?.amount ?? 0)
 
     for (const p of data.payroll) {
-      const employeeWage = data.employees.find((e) => e.id === p.employee_id)?.daily_wage ?? null
-      const { wage, meal } = rateFor(p.day_index, employeeWage)
+      const emp = data.employees.find((e) => e.id === p.employee_id)
+      const { wage, meal } = rateFor(p.day_index, emp?.daily_wage ?? null, emp?.wage_mode ?? 'kademeli')
       const bonus = bonusOf(p.employee_id, p.work_date)
 
       const row =
         map.get(p.employee_id) ??
-        { id: p.employee_id, name: p.full_name, days: [], wageTotal: 0, mealTotal: 0, bonusTotal: 0 }
+        {
+          id: p.employee_id,
+          name: p.full_name,
+          mode: emp?.wage_mode ?? ('kademeli' as WageMode),
+          days: [],
+          wageTotal: 0,
+          mealTotal: 0,
+          bonusTotal: 0,
+        }
       row.days.push({
         date: p.work_date,
         dayIndex: p.day_index,
@@ -687,7 +704,17 @@ function PayrollTab({
       if (matched) continue
       const name = data.employees.find((e) => e.id === b.employee_id)?.full_name ?? '—'
       const target =
-        row ?? { id: b.employee_id, name, days: [], wageTotal: 0, mealTotal: 0, bonusTotal: 0 }
+        row ??
+        {
+          id: b.employee_id,
+          name,
+          mode: (data.employees.find((e) => e.id === b.employee_id)?.wage_mode ??
+            'kademeli') as WageMode,
+          days: [],
+          wageTotal: 0,
+          mealTotal: 0,
+          bonusTotal: 0,
+        }
       target.days.push({
         date: b.work_date,
         dayIndex: null,
@@ -753,7 +780,14 @@ function PayrollTab({
                     className="flex w-full items-baseline justify-between gap-3 text-left"
                   >
                     <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium text-stone-800">{r.name}</span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="truncate text-sm font-medium text-stone-800">{r.name}</span>
+                        {r.mode === 'tam' && (
+                          <span className="shrink-0 rounded-md bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800">
+                            tam ücret
+                          </span>
+                        )}
+                      </span>
                       <span className="text-xs text-stone-500">
                         {workedDays} gün · yevmiye {money(r.wageTotal)} · yemek {money(r.mealTotal)}
                         {r.bonusTotal !== 0 && ` · prim ${money(r.bonusTotal)}`}
