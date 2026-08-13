@@ -40,9 +40,18 @@ export type ShiftAssignment = {
   work_date: string
   stand_id: string
   employee_id: string
+  /** "HH:MM:SS" — Postgres time */
+  start_time: string
+  end_time: string
   role: string | null
   note: string | null
 }
+
+/** Standart vardiyalar. Saatler atama bazında değiştirilebilir. */
+export const SHIFT_PRESETS = [
+  { id: 'sabah', label: 'Sabah', start: '08:00', end: '15:30' },
+  { id: 'aksam', label: 'Akşam', start: '15:30', end: '23:00' },
+] as const
 
 export type DailyRevenue = {
   id: string

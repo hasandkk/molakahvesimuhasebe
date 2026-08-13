@@ -107,19 +107,36 @@ create table if not exists public.product_variants (
 );
 
 -- ---------------------------------------------------------------------
--- shift_assignments — hangi gün, hangi standda, kim çalışıyor
+-- shift_assignments — hangi gün, hangi standda, kim, hangi saatlerde
+--   Standart vardiyalar 08:00-15:30 ve 15:30-23:00, ama saatler
+--   atama bazında serbestçe değiştirilebilir.
 -- ---------------------------------------------------------------------
 create table if not exists public.shift_assignments (
   id           uuid primary key default gen_random_uuid(),
   work_date    date not null,
   stand_id     uuid not null references public.stands(id) on delete cascade,
   employee_id  uuid not null references public.employees(id) on delete cascade,
+  start_time   time not null default '08:00',
+  end_time     time not null default '15:30',
   role         text,
   note         text,
   created_by   uuid references auth.users(id) default auth.uid(),
-  created_at   timestamptz not null default now(),
-  unique (work_date, stand_id, employee_id)
+  created_at   timestamptz not null default now()
 );
+
+-- Bu betiğin saat kolonlarından önceki sürümünü çalıştırdıysan, kolonlar
+-- ve yeni benzersizlik kuralı burada eklenir.
+alter table public.shift_assignments
+  add column if not exists start_time time not null default '08:00',
+  add column if not exists end_time   time not null default '15:30';
+
+-- Aynı kişi aynı gün sabah bir standda, akşam başka standda çalışabilir;
+-- bu yüzden benzersizlik kuralına başlangıç saati de dahil.
+alter table public.shift_assignments
+  drop constraint if exists shift_assignments_work_date_stand_id_employee_id_key;
+create unique index if not exists shift_assignments_uniq
+  on public.shift_assignments (work_date, stand_id, employee_id, start_time);
+
 create index if not exists shift_assignments_date_idx on public.shift_assignments (work_date);
 create index if not exists shift_assignments_stand_idx on public.shift_assignments (stand_id);
 create index if not exists shift_assignments_employee_idx on public.shift_assignments (employee_id);

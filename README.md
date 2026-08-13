@@ -8,7 +8,7 @@ React + Vite + TypeScript + Tailwind, arka planda Supabase (Postgres + Auth).
 | Ekran        | İçerik |
 |--------------|--------|
 | **Özet**     | Bugünkü ciro, aylık ciro, kasadaki nakit, yarınki vardiya durumu, ciro/sayım girilmemiş standlar |
-| **Vardiya**  | Gün seç → her standa çalışan ata → gruba atılacak mesajı tek tuşla kopyala. “Bir önceki günü kopyala” kısayolu var |
+| **Vardiya**  | Gün seç → her standa çalışan ata → gruba atılacak mesajı tek tuşla kopyala. Standart vardiyalar 08:00–15:30 ve 15:30–23:00; saatler her atama için tek tek değiştirilebilir. “Bir önceki günü kopyala” kısayolu var |
 | **Kasa**     | Stand bazlı gün sonu nakit/POS girişi · para çekme, gider, kasaya giriş, bankaya yatırma hareketleri · fiziki kasa sayımı ve açık/fazla tespiti |
 | **Stok**     | Akşam sayımı (100g/250g/500g/1kg/dökme) · depodan standa mal transferi · beklenen–sayılan farkı ve tahmini satış tutarı |
 | **Raporlar** | Tarih aralığında stand bazlı ciro, kim ne kadar çekti, gider kalemleri, çalışan başına vardiya sayısı |
@@ -46,7 +46,8 @@ Supabase panelinde **SQL Editor**’ü aç ve sırayla çalıştır:
 
 1. `supabase/migrations/0001_init.sql` — tablolar, fonksiyonlar, RLS politikaları
 2. Sonra ikisinden **birini** seç:
-   - `supabase/seed.sql` — boş başlangıç: 3 stand ve 5 kahve çeşidi, başka veri yok
+   - `supabase/seed.sql` — boş başlangıç: 3 stand ve tek kahve çeşidi
+     (Mola Kahvesi, 5 gramajda), başka veri yok
    - `supabase/demo_data.sql` — **deneme verisi**: son 21 günün stok sayımları,
      ciroları, vardiya planları, para hareketleri ve kasa sayımları. Uygulamayı
      dolu görmek için bunu kullan. Tarihler `current_date`'e göre üretildiği için
@@ -107,7 +108,7 @@ Skill'leri güncellemek için: `npx skills add supabase/agent-skills`
 
 1. **Akşam** — Stok ekranında her stand için sayımı gir.
 2. **Akşam** — Kasa ekranında her standın nakit ve POS cirosunu gir.
-3. **Akşam** — Vardiya ekranında yarının planını yap, “Metni kopyala” ile gruba at.
+3. **Akşam** — Vardiya ekranında vardiyayı (sabah/akşam/özel saat) seçip yarının planını yap, “Metni kopyala” ile gruba at.
 4. **Para aldığında** — Kasa → Para hareketleri’ne kimin ne kadar aldığını yaz.
 5. **Ara ara** — Kasa → Kasa sayımı ile fiziki parayı say, açık var mı bak.
 
@@ -128,6 +129,8 @@ src/
   lib/          Supabase istemcisi, auth, tipler, tarih/para yardımcıları
   pages/        Dashboard, Shifts, Cash, Stock, Reports, Settings, Login
 supabase/
-  migrations/   0001_init.sql — şema, fonksiyonlar, RLS
-  seed.sql      başlangıç verisi
+  migrations/            0001_init.sql — şema, fonksiyonlar, RLS
+  seed.sql               boş başlangıç verisi
+  demo_data.sql          denemek için 21 günlük gerçekçi veri
+  demo_data_temizle.sql  deneme verisini geri alır
 ```

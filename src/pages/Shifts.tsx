@@ -1,11 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useQuery } from '../lib/useQuery'
 import { addDays, formatLong, tomorrow } from '../lib/date'
-import type { Employee, ShiftAssignment, Stand } from '../lib/types'
-import { Button, Card, DateNav, Empty, ErrorBox, Select, Spinner } from '../components/ui'
+import { SHIFT_PRESETS, type Employee, type ShiftAssignment, type Stand } from '../lib/types'
+import { Button, Card, DateNav, Empty, ErrorBox, Select, Spinner, Tabs } from '../components/ui'
 
 type Data = { stands: Stand[]; employees: Employee[]; assignments: ShiftAssignment[] }
+type PresetId = (typeof SHIFT_PRESETS)[number]['id'] | 'ozel'
+
+/** Postgres "08:00:00" -> "08:00" */
+const hhmm = (time: string) => time.slice(0, 5)
 
 async function load(date: string): Promise<Data> {
   const [stands, employees, assignments] = await Promise.all([
@@ -29,6 +33,27 @@ export default function Shifts() {
   const [actionError, setActionError] = useState<string | null>(null)
   const { data, loading, error, reload } = useQuery(() => load(date), [date])
 
+  // Eklenecek vardiyanın saatleri
+  const [preset, setPreset] = useState<PresetId>('sabah')
+  const [customStart, setCustomStart] = useState('08:00')
+  const [customEnd, setCustomEnd] = useState('15:30')
+
+  // Satır bazında düzenlenen saatler; sunucuya yazılırken ekran titremesin diye
+  // yerel olarak da tutuluyor.
+  const [timeEdits, setTimeEdits] = useState<Record<string, { start: string; end: string }>>({})
+  useEffect(() => setTimeEdits({}), [date])
+
+  const newShift = useMemo(() => {
+    if (preset === 'ozel') return { start: customStart, end: customEnd }
+    const found = SHIFT_PRESETS.find((p) => p.id === preset)!
+    return { start: found.start, end: found.end }
+  }, [preset, customStart, customEnd])
+
+  const timesOf = useMemo(() => {
+    return (a: ShiftAssignment) =>
+      timeEdits[a.id] ?? { start: hhmm(a.start_time), end: hhmm(a.end_time) }
+  }, [timeEdits])
+
   const employeeById = useMemo(() => {
     const map = new Map<string, Employee>()
     for (const e of data?.employees ?? []) map.set(e.id, e)
@@ -43,20 +68,26 @@ export default function Shifts() {
       map.set(a.stand_id, list)
     }
     for (const list of map.values()) {
-      list.sort((a, b) =>
-        (employeeById.get(a.employee_id)?.full_name ?? '').localeCompare(
+      list.sort((a, b) => {
+        const byTime = timesOf(a).start.localeCompare(timesOf(b).start)
+        if (byTime !== 0) return byTime
+        return (employeeById.get(a.employee_id)?.full_name ?? '').localeCompare(
           employeeById.get(b.employee_id)?.full_name ?? '',
           'tr',
-        ),
-      )
+        )
+      })
     }
     return map
-  }, [data, employeeById])
+  }, [data, employeeById, timesOf])
 
-  const assignedIds = useMemo(
-    () => new Set((data?.assignments ?? []).map((a) => a.employee_id)),
-    [data],
-  )
+  /** Aynı vardiya saatinde başka bir standa yazılmış olanlar tekrar önerilmez. */
+  const takenInNewShift = useMemo(() => {
+    const set = new Set<string>()
+    for (const a of data?.assignments ?? []) {
+      if (timesOf(a).start === newShift.start) set.add(a.employee_id)
+    }
+    return set
+  }, [data, newShift, timesOf])
 
   const shareText = useMemo(() => {
     if (!data) return ''
@@ -68,14 +99,15 @@ export default function Shifts() {
         lines.push('• (kimse atanmadı)')
       } else {
         for (const a of list) {
+          const t = timesOf(a)
           const name = employeeById.get(a.employee_id)?.full_name ?? '—'
-          lines.push(`• ${name}${a.role ? ` (${a.role})` : ''}`)
+          lines.push(`• ${t.start}-${t.end}  ${name}`)
         }
       }
       lines.push('')
     }
     return lines.join('\n').trim()
-  }, [data, date, byStand, employeeById])
+  }, [data, date, byStand, employeeById, timesOf])
 
   async function run(fn: () => Promise<{ error: unknown }>) {
     setBusy(true)
@@ -93,6 +125,8 @@ export default function Shifts() {
         work_date: date,
         stand_id: standId,
         employee_id: employeeId,
+        start_time: newShift.start,
+        end_time: newShift.end,
       }),
     )
   }
@@ -101,13 +135,25 @@ export default function Shifts() {
     await run(async () => supabase.from('shift_assignments').delete().eq('id', id))
   }
 
+  async function changeTime(a: ShiftAssignment, field: 'start' | 'end', value: string) {
+    if (!value) return
+    const next = { ...timesOf(a), [field]: value }
+    setTimeEdits((prev) => ({ ...prev, [a.id]: next }))
+    setActionError(null)
+    const { error } = await supabase
+      .from('shift_assignments')
+      .update(field === 'start' ? { start_time: value } : { end_time: value })
+      .eq('id', a.id)
+    if (error) setActionError(error.message)
+  }
+
   async function copyPreviousDay() {
     setBusy(true)
     setActionError(null)
     const prev = addDays(date, -1)
     const { data: prevRows, error: readError } = await supabase
       .from('shift_assignments')
-      .select('stand_id, employee_id, role')
+      .select('stand_id, employee_id, role, start_time, end_time')
       .eq('work_date', prev)
 
     if (readError) {
@@ -125,11 +171,14 @@ export default function Shifts() {
       .from('shift_assignments')
       .upsert(
         prevRows.map((r) => ({ ...r, work_date: date })),
-        { onConflict: 'work_date,stand_id,employee_id', ignoreDuplicates: true },
+        { onConflict: 'work_date,stand_id,employee_id,start_time', ignoreDuplicates: true },
       )
 
     if (insertError) setActionError(insertError.message)
-    else await reload()
+    else {
+      setTimeEdits({})
+      await reload()
+    }
     setBusy(false)
   }
 
@@ -142,6 +191,9 @@ export default function Shifts() {
       setActionError('Panoya kopyalanamadı, metni elle seçip kopyalayabilirsin.')
     }
   }
+
+  const timeInputClass =
+    'rounded-lg border border-stone-300 bg-white px-2 py-1 text-xs tabular-nums text-stone-800 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20'
 
   return (
     <>
@@ -164,6 +216,39 @@ export default function Shifts() {
         </Button>
       </div>
 
+      <Card title="Eklenecek vardiya">
+        <Tabs
+          active={preset}
+          onChange={setPreset}
+          tabs={[
+            { id: 'sabah' as PresetId, label: 'Sabah 08:00–15:30' },
+            { id: 'aksam' as PresetId, label: 'Akşam 15:30–23:00' },
+            { id: 'ozel' as PresetId, label: 'Özel saat' },
+          ]}
+        />
+        {preset === 'ozel' && (
+          <div className="mt-3 flex items-center gap-2">
+            <input
+              type="time"
+              value={customStart}
+              onChange={(e) => setCustomStart(e.target.value)}
+              className={timeInputClass}
+            />
+            <span className="text-stone-400">–</span>
+            <input
+              type="time"
+              value={customEnd}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              className={timeInputClass}
+            />
+          </div>
+        )}
+        <p className="mt-2 text-xs text-stone-500">
+          Aşağıda eklediğin kişiler bu saatlerle kaydedilir. Ekledikten sonra her satırın saatini
+          tek tek değiştirebilirsin.
+        </p>
+      </Card>
+
       {error && <ErrorBox message={error} />}
       {actionError && <ErrorBox message={actionError} />}
       {loading && !data && <Spinner />}
@@ -177,7 +262,7 @@ export default function Shifts() {
       <div className="grid gap-4 md:grid-cols-2">
         {data?.stands.map((stand) => {
           const list = byStand.get(stand.id) ?? []
-          const available = data.employees.filter((e) => !assignedIds.has(e.id))
+          const available = data.employees.filter((e) => !takenInNewShift.has(e.id))
           return (
             <Card
               key={stand.id}
@@ -186,23 +271,44 @@ export default function Shifts() {
             >
               <ul className="space-y-2">
                 {list.length === 0 && <Empty>Kimse atanmadı</Empty>}
-                {list.map((a) => (
-                  <li
-                    key={a.id}
-                    className="flex items-center justify-between rounded-xl bg-stone-50 px-3 py-2 text-sm"
-                  >
-                    <span>{employeeById.get(a.employee_id)?.full_name ?? '—'}</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => void removeAssignment(a.id)}
-                      disabled={busy}
-                      aria-label="Çıkar"
-                    >
-                      ✕
-                    </Button>
-                  </li>
-                ))}
+                {list.map((a) => {
+                  const t = timesOf(a)
+                  return (
+                    <li key={a.id} className="rounded-xl bg-stone-50 px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm text-stone-800">
+                          {employeeById.get(a.employee_id)?.full_name ?? '—'}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void removeAssignment(a.id)}
+                          disabled={busy}
+                          aria-label="Çıkar"
+                        >
+                          ✕
+                        </Button>
+                      </div>
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <input
+                          type="time"
+                          value={t.start}
+                          onChange={(e) => void changeTime(a, 'start', e.target.value)}
+                          className={timeInputClass}
+                          aria-label="Başlangıç saati"
+                        />
+                        <span className="text-stone-400">–</span>
+                        <input
+                          type="time"
+                          value={t.end}
+                          onChange={(e) => void changeTime(a, 'end', e.target.value)}
+                          className={timeInputClass}
+                          aria-label="Bitiş saati"
+                        />
+                      </div>
+                    </li>
+                  )
+                })}
               </ul>
 
               <Select
@@ -212,7 +318,9 @@ export default function Shifts() {
                 onChange={(e) => void addAssignment(stand.id, e.target.value)}
               >
                 <option value="">
-                  {available.length === 0 ? 'Boşta çalışan kalmadı' : '+ Çalışan ekle…'}
+                  {available.length === 0
+                    ? 'Bu vardiyada boşta çalışan kalmadı'
+                    : `+ Çalışan ekle (${newShift.start}–${newShift.end})…`}
                 </option>
                 {available.map((e) => (
                   <option key={e.id} value={e.id}>

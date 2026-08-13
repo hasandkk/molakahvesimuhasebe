@@ -2,15 +2,15 @@
 -- DENEME VERİSİ — uygulamayı doldurup gezmek için
 --
 -- 0001_init.sql çalıştırıldıktan sonra çalıştır. seed.sql'e gerek yok,
--- bu dosya kendi standlarını, çalışanlarını ve ürünlerini oluşturur.
+-- bu dosya kendi standlarını, çalışanlarını ve ürününü oluşturur.
 --
 -- Üretilen veri:
---   • 3 stand, 6 çalışan, 5 kahve çeşidi (fiyatlarıyla)
+--   • 3 stand, 6 çalışan, tek kahve çeşidi (Mola Kahvesi) 5 gramajda
 --   • Son 21 günün stok sayımları ve depo takviyeleri
 --   • Aynı günlerin nakit/POS ciroları — stok hareketleriyle tutarlı,
 --     yani "tahmini satış tutarı" ile gerçek ciro birbirini tutuyor
 --   • Son 7 gün + bugün + YARIN için vardiya planı
---   • Para çekme, gider ve haftalık bankaya yatırma hareketleri
+--   • Para çekme, gider ve düzenli bankaya yatırma hareketleri
 --   • İki kasa sayımı; biri bilerek 450 TL açık veriyor
 --
 -- Tarihler current_date'e göre üretilir, yani hangi gün çalıştırırsan
@@ -21,6 +21,15 @@
 -- =====================================================================
 
 begin;
+
+-- ---------------------------------------------------------------------
+-- Eski çok ürünlü deneme verisinden kalan kahve çeşitlerini kaldır.
+-- (Bu betiğin önceki sürümü 5 çeşit oluşturuyordu. Ürün silinince ona
+--  bağlı gramajlar, sayım kalemleri ve transfer kalemleri de gider.)
+-- ---------------------------------------------------------------------
+delete from public.products
+where name in ('Türk Kahvesi', 'Dibek Kahvesi', 'Menengiç Kahvesi',
+               'Osmanlı Kahvesi', 'Filtre Kahve');
 
 -- ---------------------------------------------------------------------
 -- Standlar
@@ -44,34 +53,23 @@ insert into public.employees (full_name, phone, daily_wage) values
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------
--- Kahve çeşitleri ve gramajları
---   base = 500g paket fiyatı; diğer gramajlar bunun katsayısı
+-- Tek ürün, 5 gramaj — fiyatlarıyla
 -- ---------------------------------------------------------------------
 insert into public.products (name, sort_order) values
-  ('Türk Kahvesi',     1),
-  ('Dibek Kahvesi',    2),
-  ('Menengiç Kahvesi', 3),
-  ('Osmanlı Kahvesi',  4),
-  ('Filtre Kahve',     5)
+  ('Mola Kahvesi', 1)
 on conflict do nothing;
 
 insert into public.product_variants (product_id, size_label, unit, grams, price, sort_order)
-select p.id, s.label, s.unit, s.grams, round(b.base * s.mult), s.ord
+select p.id, s.label, s.unit, s.grams, s.price, s.ord
 from public.products p
-join (values
-  ('Türk Kahvesi',     340),
-  ('Dibek Kahvesi',    400),
-  ('Menengiç Kahvesi', 460),
-  ('Osmanlı Kahvesi',  380),
-  ('Filtre Kahve',     320)
-) as b(pname, base) on b.pname = p.name
 cross join (values
-  ('100g',  'adet',  100, 0.25, 1),
-  ('250g',  'adet',  250, 0.55, 2),
-  ('500g',  'adet',  500, 1.00, 3),
-  ('1kg',   'adet', 1000, 1.85, 4),
-  ('Dökme', 'kg',   null, 1.75, 5)
-) as s(label, unit, grams, mult, ord)
+  ('100g',  'adet',  100,  95, 1),
+  ('250g',  'adet',  250, 209, 2),
+  ('500g',  'adet',  500, 380, 3),
+  ('1kg',   'adet', 1000, 703, 4),
+  ('Dökme', 'kg',   null, 665, 5)
+) as s(label, unit, grams, price, ord)
+where p.name = 'Mola Kahvesi'
 on conflict (product_id, size_label) do update set price = excluded.price;
 
 -- ---------------------------------------------------------------------
@@ -93,6 +91,7 @@ declare
   v_count_id    uuid;
   v_transfer_id uuid;
   v_opening     boolean;
+  v_restock     numeric;
   v_prev        numeric;
   v_incoming    numeric;
   v_available   numeric;
@@ -143,7 +142,7 @@ begin
       v_day_total := 0;
 
       for v_variant in
-        select v.id, v.unit, v.price, v.sort_order as v_ord, p.sort_order as p_ord
+        select v.id, v.unit, v.price, v.sort_order as v_ord
         from public.product_variants v
         join public.products p on p.id = v.product_id
         where v.is_active and p.is_active
@@ -158,32 +157,34 @@ begin
         limit 1;
         v_prev := coalesce(v_prev, 0);
 
-        -- Bugün standa giren mal (takviye ~4 günlük satışı karşılar)
+        -- Takviye miktarı ≈ 4 günlük satış. Açılışta bunun iki katı.
+        v_restock := case v_variant.v_ord
+                       when 1 then 26   -- 100g
+                       when 2 then 20   -- 250g
+                       when 3 then 14   -- 500g
+                       when 4 then 4    -- 1kg
+                       else 8           -- Dökme (kg)
+                     end;
+
         v_incoming := 0;
         if v_transfer_id is not null then
-          if v_variant.unit = 'kg' then
-            v_incoming := case when v_opening then 6 + (v_variant.p_ord % 3)
-                               else 1.0 + (v_variant.p_ord % 3) * 0.5 end;
-          else
-            v_incoming := case when v_opening then 10 + ((v_variant.p_ord + v_variant.v_ord) % 4)
-                               else 1 + ((v_variant.p_ord + v_variant.v_ord) % 3) end;
-          end if;
+          v_incoming := case when v_opening then v_restock * 2 else v_restock end;
           insert into public.stock_transfer_items (transfer_id, variant_id, quantity)
           values (v_transfer_id, v_variant.id, v_incoming);
         end if;
 
         v_available := v_prev + v_incoming;
 
-        -- Günün satışı (deterministik; eldeki stoktan fazla olamaz)
-        -- Paketli ürünler günde 0-2 adet, dökme kahve 0,1-0,7 kg satar.
-        if v_variant.unit = 'kg' then
-          v_sold := least(v_available,
-                          0.1 + ((v_offset + v_variant.p_ord * 3 + v_ix) % 5) * 0.15);
-        else
-          v_sold := least(v_available,
-                          greatest(0, ((v_offset * 2 + v_variant.p_ord * 3
-                                        + v_variant.v_ord + v_ix * 4) % 6) - 3));
-        end if;
+        -- Günün satışı: küçük gramajlar çok, büyükler az satar.
+        -- Deterministik ve eldeki stoktan fazla olamaz.
+        v_sold := case v_variant.v_ord
+                    when 1 then 4 + ((v_offset * 2 + v_ix * 3) % 6)        -- 100g:  4-9 adet
+                    when 2 then 3 + ((v_offset * 3 + v_ix * 2) % 5)        -- 250g:  3-7 adet
+                    when 3 then 2 + ((v_offset + v_ix * 5) % 4)            -- 500g:  2-5 adet
+                    when 4 then ((v_offset * 2 + v_ix) % 3)                -- 1kg:   0-2 adet
+                    else 1.0 + ((v_offset + v_ix * 2) % 5) * 0.5           -- Dökme: 1-3 kg
+                  end;
+        v_sold := least(v_available, v_sold);
 
         -- Akşam sayımı = eldeki − satılan
         insert into public.stock_count_items (count_id, variant_id, quantity)
@@ -207,7 +208,7 @@ begin
     end loop;
   end loop;
 
-  -- ---- Haftada iki kez bankaya yatırma ------------------------------
+  -- ---- Üç günde bir bankaya yatırma ---------------------------------
   -- Biriken nakdin %85'i yatırılır; kalanı kasada döner sermaye olur.
   v_last_bank := current_date - 21;
   for v_offset in reverse 18..2 loop
@@ -236,18 +237,29 @@ begin
     v_day := current_date - v_offset;
 
     for v_ix in 1..array_length(stand_ids, 1) loop
+      -- v_slot 0 = sabah vardiyası, 1 = akşam vardiyası
       for v_slot in 0..1 loop
-        insert into public.shift_assignments (work_date, stand_id, employee_id, role)
+        insert into public.shift_assignments
+          (work_date, stand_id, employee_id, start_time, end_time, role)
         values (
           v_day,
           stand_ids[v_ix],
           emp_ids[1 + (((v_ix - 1) * 2 + v_slot + v_offset + 10) % emp_count)],
+          case when v_slot = 0 then time '08:00' else time '15:30' end,
+          case when v_slot = 0 then time '15:30' else time '23:00' end,
           case when v_slot = 0 then 'sorumlu' else null end
         )
         on conflict do nothing;
       end loop;
     end loop;
   end loop;
+
+  -- 2 gün önce Bahçelievler'de sabah vardiyası geç açılmış (özel saat örneği)
+  update public.shift_assignments
+  set start_time = '10:00', end_time = '17:00'
+  where work_date = current_date - 2
+    and stand_id = stand_ids[3]
+    and start_time = time '08:00';
 end;
 $$;
 
