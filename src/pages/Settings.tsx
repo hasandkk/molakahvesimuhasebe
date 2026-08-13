@@ -43,40 +43,65 @@ export default function Settings() {
 function StandsPanel() {
   const [name, setName] = useState('')
   const [location, setLocation] = useState('')
+  const [editing, setEditing] = useState<string | null>(null)
+  const [draft, setDraft] = useState({ name: '', location: '' })
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+
   const { data, loading, error, reload } = useQuery(async () => {
     const { data, error } = await supabase.from('stands').select('*').order('sort_order').order('name')
     if (error) throw error
     return (data ?? []) as Stand[]
   }, [])
 
-  async function add() {
-    if (!name.trim()) return
+  async function run(fn: () => Promise<{ error: { message: string } | null }>) {
     setBusy(true)
     setActionError(null)
-    const { error } = await supabase
-      .from('stands')
-      .insert({ name: name.trim(), location: location.trim() || null, sort_order: (data?.length ?? 0) + 1 })
+    const { error } = await fn()
     if (error) setActionError(error.message)
     else {
-      setName('')
-      setLocation('')
       invalidateRefData()
       reload()
     }
     setBusy(false)
+    return !error
+  }
+
+  async function add() {
+    if (!name.trim()) return
+    const ok = await run(async () =>
+      supabase
+        .from('stands')
+        .insert({ name: name.trim(), location: location.trim() || null, sort_order: (data?.length ?? 0) + 1 }),
+    )
+    if (ok) {
+      setName('')
+      setLocation('')
+    }
+  }
+
+  function startEdit(stand: Stand) {
+    setEditing(stand.id)
+    setDraft({ name: stand.name, location: stand.location ?? '' })
+    setActionError(null)
+  }
+
+  async function saveEdit(stand: Stand) {
+    if (!draft.name.trim()) {
+      setActionError('Stand adı boş olamaz.')
+      return
+    }
+    const ok = await run(async () =>
+      supabase
+        .from('stands')
+        .update({ name: draft.name.trim(), location: draft.location.trim() || null })
+        .eq('id', stand.id),
+    )
+    if (ok) setEditing(null)
   }
 
   async function toggle(stand: Stand) {
-    setBusy(true)
-    const { error } = await supabase.from('stands').update({ is_active: !stand.is_active }).eq('id', stand.id)
-    if (error) setActionError(error.message)
-    else {
-      invalidateRefData()
-      reload()
-    }
-    setBusy(false)
+    await run(async () => supabase.from('stands').update({ is_active: !stand.is_active }).eq('id', stand.id))
   }
 
   return (
@@ -102,83 +127,185 @@ function StandsPanel() {
         {data && data.length === 0 && <Empty>Henüz stand yok.</Empty>}
         <ul className="divide-y divide-stone-100">
           {data?.map((stand) => (
-            <li key={stand.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-              <div>
-                <div className={stand.is_active ? 'text-stone-800' : 'text-stone-400 line-through'}>
-                  {stand.name}
+            <li key={stand.id} className="py-2.5 text-sm">
+              {editing === stand.id ? (
+                <div className="space-y-2">
+                  <Field label="Stand adı">
+                    <Input
+                      value={draft.name}
+                      onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+                    />
+                  </Field>
+                  <Field label="Konum">
+                    <Input
+                      value={draft.location}
+                      onChange={(e) => setDraft((d) => ({ ...d, location: e.target.value }))}
+                    />
+                  </Field>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => void saveEdit(stand)} disabled={busy}>
+                      Kaydet
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => setEditing(null)} disabled={busy}>
+                      Vazgeç
+                    </Button>
+                  </div>
                 </div>
-                {stand.location && <div className="text-xs text-stone-500">{stand.location}</div>}
-              </div>
-              <Button variant="secondary" size="sm" onClick={() => void toggle(stand)} disabled={busy}>
-                {stand.is_active ? 'Pasifleştir' : 'Aktifleştir'}
-              </Button>
+              ) : (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div
+                      className={`truncate ${stand.is_active ? 'text-stone-800' : 'text-stone-400 line-through'}`}
+                    >
+                      {stand.name}
+                    </div>
+                    {stand.location && <div className="text-xs text-stone-500">{stand.location}</div>}
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button variant="secondary" size="sm" onClick={() => startEdit(stand)} disabled={busy}>
+                      Düzenle
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => void toggle(stand)} disabled={busy}>
+                      {stand.is_active ? 'Pasifleştir' : 'Aktifleştir'}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </li>
           ))}
         </ul>
+        <p className="mt-3 text-xs text-stone-500">
+          Stand silme yoktur: silinseydi o standın tüm ciro, satış ve sayım geçmişi de silinirdi.
+          Kullanmadığın standı <strong>pasifleştir</strong> — ekranlarda görünmez ama geçmişi durur.
+        </p>
       </Card>
     </>
   )
 }
+
+/** Silme onayı için: bu çalışana bağlı kaç kayıt var? */
+type DeleteTarget = { id: string; name: string; shifts: number; bonuses: number }
 
 function EmployeesPanel() {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [wage, setWage] = useState('')
   const [mode, setMode] = useState<WageMode>('kademeli')
+  const [editing, setEditing] = useState<string | null>(null)
+  const [draft, setDraft] = useState({ name: '', phone: '', wage: '' })
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+
   const { data, loading, error, reload } = useQuery(async () => {
     const { data, error } = await supabase.from('employees').select('*').order('full_name')
     if (error) throw error
     return (data ?? []) as Employee[]
   }, [])
 
-  async function add() {
-    if (!name.trim()) return
+  async function run(fn: () => Promise<{ error: { message: string } | null }>) {
     setBusy(true)
     setActionError(null)
-    const { error } = await supabase.from('employees').insert({
-      full_name: name.trim(),
-      phone: phone.trim() || null,
-      daily_wage: wage.trim() ? parseNumber(wage) : null,
-      wage_mode: mode,
-    })
+    const { error } = await fn()
     if (error) setActionError(error.message)
     else {
+      invalidateRefData()
+      reload()
+    }
+    setBusy(false)
+    return !error
+  }
+
+  async function add() {
+    if (!name.trim()) return
+    const ok = await run(async () =>
+      supabase.from('employees').insert({
+        full_name: name.trim(),
+        phone: phone.trim() || null,
+        daily_wage: wage.trim() ? parseNumber(wage) : null,
+        wage_mode: mode,
+      }),
+    )
+    if (ok) {
       setName('')
       setPhone('')
       setWage('')
       setMode('kademeli')
-      invalidateRefData()
-      reload()
     }
-    setBusy(false)
+  }
+
+  function startEdit(employee: Employee) {
+    setEditing(employee.id)
+    setDeleteTarget(null)
+    setDraft({
+      name: employee.full_name,
+      phone: employee.phone ?? '',
+      wage: employee.daily_wage === null ? '' : String(employee.daily_wage),
+    })
+    setActionError(null)
+  }
+
+  async function saveEdit(employee: Employee) {
+    if (!draft.name.trim()) {
+      setActionError('Ad soyad boş olamaz.')
+      return
+    }
+    const ok = await run(async () =>
+      supabase
+        .from('employees')
+        .update({
+          full_name: draft.name.trim(),
+          phone: draft.phone.trim() || null,
+          daily_wage: draft.wage.trim() ? parseNumber(draft.wage) : null,
+        })
+        .eq('id', employee.id),
+    )
+    if (ok) setEditing(null)
   }
 
   async function changeMode(employee: Employee, next: WageMode) {
-    setBusy(true)
-    setActionError(null)
-    const { error } = await supabase.from('employees').update({ wage_mode: next }).eq('id', employee.id)
-    if (error) setActionError(error.message)
-    else {
-      invalidateRefData()
-      reload()
-    }
-    setBusy(false)
+    await run(async () => supabase.from('employees').update({ wage_mode: next }).eq('id', employee.id))
   }
 
   async function toggle(employee: Employee) {
+    await run(async () =>
+      supabase.from('employees').update({ is_active: !employee.is_active }).eq('id', employee.id),
+    )
+  }
+
+  /** Silmeden önce neyin gideceğini say — vardiya ve primler cascade ile silinir. */
+  async function askDelete(employee: Employee) {
     setBusy(true)
-    const { error } = await supabase
-      .from('employees')
-      .update({ is_active: !employee.is_active })
-      .eq('id', employee.id)
-    if (error) setActionError(error.message)
-    else {
-      invalidateRefData()
-      reload()
+    setActionError(null)
+    setEditing(null)
+    const [shifts, bonuses] = await Promise.all([
+      supabase
+        .from('shift_assignments')
+        .select('id', { count: 'exact', head: true })
+        .eq('employee_id', employee.id),
+      supabase
+        .from('employee_bonuses')
+        .select('id', { count: 'exact', head: true })
+        .eq('employee_id', employee.id),
+    ])
+    if (shifts.error || bonuses.error) {
+      setActionError((shifts.error ?? bonuses.error)!.message)
+      setBusy(false)
+      return
     }
+    setDeleteTarget({
+      id: employee.id,
+      name: employee.full_name,
+      shifts: shifts.count ?? 0,
+      bonuses: bonuses.count ?? 0,
+    })
     setBusy(false)
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    const ok = await run(async () => supabase.from('employees').delete().eq('id', deleteTarget.id))
+    if (ok) setDeleteTarget(null)
   }
 
   return (
@@ -221,40 +348,128 @@ function EmployeesPanel() {
         <ul className="divide-y divide-stone-100">
           {data?.map((employee) => (
             <li key={employee.id} className="py-2.5 text-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div
-                    className={`truncate ${employee.is_active ? 'text-stone-800' : 'text-stone-400 line-through'}`}
-                  >
-                    {employee.full_name}
+              {editing === employee.id ? (
+                <div className="space-y-2">
+                  <Field label="Ad soyad">
+                    <Input
+                      value={draft.name}
+                      onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+                    />
+                  </Field>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Field label="Telefon">
+                      <Input
+                        value={draft.phone}
+                        inputMode="tel"
+                        onChange={(e) => setDraft((d) => ({ ...d, phone: e.target.value }))}
+                      />
+                    </Field>
+                    <Field label="Yevmiye (₺)">
+                      <Input
+                        value={draft.wage}
+                        inputMode="decimal"
+                        onChange={(e) => setDraft((d) => ({ ...d, wage: e.target.value }))}
+                      />
+                    </Field>
                   </div>
-                  <div className="text-xs text-stone-500">
-                    {employee.phone ?? '—'}
-                    {employee.daily_wage ? ` · ${money(employee.daily_wage)}/gün` : ''}
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => void saveEdit(employee)} disabled={busy}>
+                      Kaydet
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => setEditing(null)} disabled={busy}>
+                      Vazgeç
+                    </Button>
                   </div>
                 </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="shrink-0"
-                  onClick={() => void toggle(employee)}
-                  disabled={busy}
-                >
-                  {employee.is_active ? 'Pasifleştir' : 'Aktifleştir'}
-                </Button>
-              </div>
-              <Select
-                className="mt-2 py-1.5 text-xs"
-                value={employee.wage_mode}
-                disabled={busy}
-                onChange={(e) => void changeMode(employee, e.target.value as WageMode)}
-              >
-                {(Object.keys(WAGE_MODE_LABELS) as WageMode[]).map((k) => (
-                  <option key={k} value={k}>
-                    {WAGE_MODE_LABELS[k]}
-                  </option>
-                ))}
-              </Select>
+              ) : deleteTarget?.id === employee.id ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+                  <p className="text-sm font-semibold text-red-800">
+                    {deleteTarget.name} silinsin mi?
+                  </p>
+                  {deleteTarget.shifts + deleteTarget.bonuses > 0 ? (
+                    <>
+                      <p className="mt-1 text-xs text-red-800">
+                        Bu kişinin <strong>{deleteTarget.shifts} vardiya kaydı</strong>
+                        {deleteTarget.bonuses > 0 && (
+                          <>
+                            {' '}
+                            ve <strong>{deleteTarget.bonuses} prim kaydı</strong>
+                          </>
+                        )}{' '}
+                        var. Silersen bunlar da silinir ve geçmiş maaş hesapları değişir.
+                      </p>
+                      <p className="mt-1 text-xs text-red-700">
+                        İşten ayrıldıysa silmek yerine <strong>pasifleştir</strong>: listelerde
+                        görünmez ama geçmişi korunur.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="mt-1 text-xs text-red-800">
+                      Bu kişiye bağlı vardiya veya prim kaydı yok, güvenle silinebilir.
+                    </p>
+                  )}
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button variant="secondary" size="sm" onClick={() => setDeleteTarget(null)} disabled={busy}>
+                      Vazgeç
+                    </Button>
+                    {deleteTarget.shifts + deleteTarget.bonuses > 0 && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          setDeleteTarget(null)
+                          void toggle(employee)
+                        }}
+                        disabled={busy}
+                      >
+                        Pasifleştir
+                      </Button>
+                    )}
+                    <Button variant="danger" size="sm" onClick={() => void confirmDelete()} disabled={busy}>
+                      {deleteTarget.shifts + deleteTarget.bonuses > 0 ? 'Yine de sil' : 'Sil'}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div
+                        className={`truncate ${employee.is_active ? 'text-stone-800' : 'text-stone-400 line-through'}`}
+                      >
+                        {employee.full_name}
+                      </div>
+                      <div className="text-xs text-stone-500">
+                        {employee.phone ?? '—'}
+                        {employee.daily_wage ? ` · ${money(employee.daily_wage)}/gün` : ''}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <Button variant="secondary" size="sm" onClick={() => startEdit(employee)} disabled={busy}>
+                        Düzenle
+                      </Button>
+                      <Button variant="secondary" size="sm" onClick={() => void toggle(employee)} disabled={busy}>
+                        {employee.is_active ? 'Pasifleştir' : 'Aktifleştir'}
+                      </Button>
+                      <Button variant="danger" size="sm" onClick={() => void askDelete(employee)} disabled={busy}>
+                        Sil
+                      </Button>
+                    </div>
+                  </div>
+                  <Select
+                    className="mt-2 py-1.5 text-xs"
+                    value={employee.wage_mode}
+                    disabled={busy}
+                    onChange={(e) => void changeMode(employee, e.target.value as WageMode)}
+                  >
+                    {(Object.keys(WAGE_MODE_LABELS) as WageMode[]).map((k) => (
+                      <option key={k} value={k}>
+                        {WAGE_MODE_LABELS[k]}
+                      </option>
+                    ))}
+                  </Select>
+                </>
+              )}
             </li>
           ))}
         </ul>

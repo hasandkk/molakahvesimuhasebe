@@ -12,7 +12,7 @@ React + Vite + TypeScript + Tailwind, arka planda Supabase (Postgres + Auth).
 | **Kasa**     | Stand bazlı gün sonu nakit/POS girişi · para çekme, gider, kasaya giriş, bankaya yatırma hareketleri · fiziki kasa sayımı ve açık/fazla tespiti |
 | **Stok**     | **Günlük satış** girişi (asıl günlük iş) · **Sayım** ile ara sıra fiziki kontrol ve fire/kayıp tespiti · depodan standa **transfer** |
 | **Raporlar** | Üç sekme: **Özet** (stand bazlı ciro, kim ne kadar çekti, gider kalemleri) · **Vardiya geçmişi** (gün gün kim hangi standda, hangi saatte; çalışana göre süzülebilir) · **Satış geçmişi** (hangi gün hangi standda ne satıldı + sayım farkları) · **Maaş** (kademeli yevmiye + yemek + prim hesabı) |
-| **Tanımlar** | Stand, çalışan ve kahve çeşidi/fiyat yönetimi |
+| **Tanımlar** | Stand ve çalışan ekleme, **isim/bilgi düzenleme**, pasifleştirme; çalışan silme (geçmişi varsa uyarır) · kahve çeşidi yönetimi |
 
 Stand sayısı sabit değil — “Tanımlar” ekranından istediğin kadar stand ekler,
 kullanmadığını pasifleştirirsin. Tüm ekranlar aktif standları otomatik takip eder.
@@ -64,6 +64,17 @@ diğerinde. Yasak olan **saatlerin çakışması**. Bitişik vardiyalar (12:00'd
 biten ve 12:00'de başlayan) çakışma sayılmaz. Çakışan kişi ekleme listesinde
 seçilemez ve sebebi yazar; kayıtlı planda çakışma varsa ekranın üstünde
 kırmızı uyarı çıkar.
+
+### Silme ve pasifleştirme
+
+Bir **standı** silmek, o standın tüm ciro, satış, sayım ve vardiya geçmişini de
+siler (foreign key cascade). Bu yüzden stand silme yoktur; kullanılmayan stand
+**pasifleştirilir** — ekranlarda görünmez, geçmişi durur.
+
+**Çalışan** silinebilir, ama silmeden önce kaç vardiya ve prim kaydı olduğu
+gösterilir. Kayıt varsa uyarı çıkar ve pasifleştirme önerilir; silmek geçmiş
+maaş hesaplarını değiştirir. Hiç kaydı olmayan biri (yanlış eklenmiş isim gibi)
+uyarısız silinebilir.
 
 ### Maaş mantığı
 
