@@ -1,6 +1,11 @@
 -- =====================================================================
 -- Mola Kahvesi — Stand Yönetim / Muhasebe / Stok şeması
 -- Supabase SQL Editor'de bu dosyanın tamamını çalıştır.
+--
+-- Not: created_by (auth.users) foreign key'leri bilerek indekslenmedi.
+-- Bu kolonlar hiçbir sorguda filtre olarak kullanılmıyor; indeks yalnızca
+-- bir auth kullanıcısı silinirken işe yarar ki bu neredeyse hiç olmaz.
+-- Diğer tüm foreign key kolonları indekslidir.
 -- =====================================================================
 
 create extension if not exists pgcrypto;
@@ -116,6 +121,8 @@ create table if not exists public.shift_assignments (
   unique (work_date, stand_id, employee_id)
 );
 create index if not exists shift_assignments_date_idx on public.shift_assignments (work_date);
+create index if not exists shift_assignments_stand_idx on public.shift_assignments (stand_id);
+create index if not exists shift_assignments_employee_idx on public.shift_assignments (employee_id);
 
 -- ---------------------------------------------------------------------
 -- daily_revenues — stand başına gün sonu nakit / POS cirosu
@@ -133,6 +140,7 @@ create table if not exists public.daily_revenues (
   unique (business_date, stand_id)
 );
 create index if not exists daily_revenues_date_idx on public.daily_revenues (business_date);
+create index if not exists daily_revenues_stand_idx on public.daily_revenues (stand_id);
 
 drop trigger if exists daily_revenues_updated_at on public.daily_revenues;
 create trigger daily_revenues_updated_at
@@ -159,6 +167,7 @@ create table if not exists public.cash_movements (
                    (case when type = 'giris' then amount else -amount end) stored
 );
 create index if not exists cash_movements_date_idx on public.cash_movements (movement_date);
+create index if not exists cash_movements_stand_idx on public.cash_movements (stand_id);
 
 -- ---------------------------------------------------------------------
 -- cash_counts — fiziki kasa sayımı (açık/fazla tespiti)
@@ -174,6 +183,7 @@ create table if not exists public.cash_counts (
   created_at       timestamptz not null default now()
 );
 create index if not exists cash_counts_date_idx on public.cash_counts (count_date);
+create index if not exists cash_counts_stand_idx on public.cash_counts (stand_id);
 
 -- ---------------------------------------------------------------------
 -- stock_counts / stock_count_items — akşam stok sayımı
@@ -189,6 +199,7 @@ create table if not exists public.stock_counts (
   unique (count_date, stand_id)
 );
 create index if not exists stock_counts_date_idx on public.stock_counts (count_date);
+create index if not exists stock_counts_stand_idx on public.stock_counts (stand_id);
 
 drop trigger if exists stock_counts_updated_at on public.stock_counts;
 create trigger stock_counts_updated_at
@@ -202,6 +213,7 @@ create table if not exists public.stock_count_items (
   quantity    numeric(12,3) not null default 0 check (quantity >= 0),
   unique (count_id, variant_id)
 );
+create index if not exists stock_count_items_variant_idx on public.stock_count_items (variant_id);
 
 -- ---------------------------------------------------------------------
 -- stock_transfers / items — depodan standa mal çıkışı, standdan iade
@@ -218,6 +230,7 @@ create table if not exists public.stock_transfers (
   created_at     timestamptz not null default now()
 );
 create index if not exists stock_transfers_date_idx on public.stock_transfers (transfer_date);
+create index if not exists stock_transfers_stand_idx on public.stock_transfers (stand_id);
 
 create table if not exists public.stock_transfer_items (
   id           uuid primary key default gen_random_uuid(),
@@ -225,6 +238,8 @@ create table if not exists public.stock_transfer_items (
   variant_id   uuid not null references public.product_variants(id) on delete cascade,
   quantity     numeric(12,3) not null check (quantity > 0)
 );
+create index if not exists stock_transfer_items_transfer_idx on public.stock_transfer_items (transfer_id);
+create index if not exists stock_transfer_items_variant_idx on public.stock_transfer_items (variant_id);
 
 -- ---------------------------------------------------------------------
 -- stand_stock_report(stand, tarih)
@@ -402,4 +417,6 @@ create policy profiles_select on public.profiles
 
 drop policy if exists profiles_update_own on public.profiles;
 create policy profiles_update_own on public.profiles
-  for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
+  for update to authenticated
+  using (id = (select auth.uid()))
+  with check (id = (select auth.uid()));

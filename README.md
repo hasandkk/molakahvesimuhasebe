@@ -79,6 +79,23 @@ Vercel veya Netlify’a bağlaman yeterli:
 - Ortam değişkenleri: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
 - SPA yönlendirmesi için `vercel.json` ve `public/_redirects` hazır
 
+## Claude Code ile geliştirme
+
+Depoda Supabase MCP sunucusu proje düzeyinde tanımlı (`.mcp.json`) ve Supabase'in
+resmî agent skill'leri kurulu (`.agents/skills/`, `.claude/skills/` altından sembolik
+bağlantılı). Depoyu klonlayıp Claude Code'u açtığında ikisi de hazır gelir; tek yapman
+gereken MCP sunucusunda kimlik doğrulaması:
+
+```bash
+claude /mcp      # supabase sunucusunu seç → Authenticate
+```
+
+Bunu normal bir terminalde çalıştır (IDE eklentisi içinde değil), çünkü tarayıcıda
+OAuth akışı açılıyor. Kimlik doğrulandıktan sonra Claude Code migration çalıştırma,
+sorgu atma ve log inceleme işlerini doğrudan yapabilir.
+
+Skill'leri güncellemek için: `npx skills add supabase/agent-skills`
+
 ## Günlük kullanım akışı
 
 1. **Akşam** — Stok ekranında her stand için sayımı gir.
