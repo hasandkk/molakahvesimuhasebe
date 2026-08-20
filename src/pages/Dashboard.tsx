@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useQuery } from '../lib/useQuery'
-import { fetchActiveEmployees, fetchActiveStands } from '../lib/refData'
+import { fetchActiveStands, fetchAllEmployees } from '../lib/refData'
 import { formatLong, today, tomorrow, weekDays } from '../lib/date'
 import { buildShiftMessage, groupByStand, groupLabel } from '../lib/shiftMessage'
 import type { Employee, ShiftAssignment, Stand } from '../lib/types'
@@ -23,7 +23,7 @@ async function load(): Promise<Data> {
 
   const [stands, employees, shifts, weekRows, sales] = await Promise.all([
     fetchActiveStands(),
-    fetchActiveEmployees(),
+    fetchAllEmployees(),
     supabase.from('shift_assignments').select('*').eq('work_date', next),
     supabase
       .from('shift_assignments')

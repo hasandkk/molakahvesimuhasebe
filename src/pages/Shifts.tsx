@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useQuery } from '../lib/useQuery'
-import { fetchActiveEmployees, fetchActiveStands } from '../lib/refData'
+import { fetchActiveEmployees, fetchActiveStands, fetchAllEmployees } from '../lib/refData'
 import {
   addDays,
   formatDayMonth,
@@ -41,15 +41,26 @@ import {
 } from '../components/ui'
 
 type View = 'gun' | 'hafta'
-type Data = { stands: Stand[]; employees: Employee[]; assignments: ShiftAssignment[] }
+/**
+ * `employees` ekleme listesi için — sadece aktifler.
+ * `allEmployees` isim çözmek için — pasife alınmış biri mevcut vardiyasında
+ * "—" görünmesin diye.
+ */
+type Data = {
+  stands: Stand[]
+  employees: Employee[]
+  allEmployees: Employee[]
+  assignments: ShiftAssignment[]
+}
 type PresetId = (typeof SHIFT_PRESETS)[number]['id'] | 'ozel' | 'egitim'
 type Times = { start: string; end: string }
 
 /** Haftanın tamamı tek seferde çekilir; gün değiştirmek ağ beklemez. */
 async function load(weekStart: string): Promise<Data> {
-  const [stands, employees, assignments] = await Promise.all([
+  const [stands, employees, allEmployees, assignments] = await Promise.all([
     fetchActiveStands(),
     fetchActiveEmployees(),
+    fetchAllEmployees(),
     supabase
       .from('shift_assignments')
       .select('*')
@@ -57,7 +68,12 @@ async function load(weekStart: string): Promise<Data> {
       .lte('work_date', addDays(weekStart, 6)),
   ])
   if (assignments.error) throw assignments.error
-  return { stands, employees, assignments: (assignments.data ?? []) as ShiftAssignment[] }
+  return {
+    stands,
+    employees,
+    allEmployees,
+    assignments: (assignments.data ?? []) as ShiftAssignment[],
+  }
 }
 
 function TabLabel({ title, sub }: { title: string; sub?: string }) {
@@ -104,9 +120,11 @@ export default function Shifts() {
     [timeEdits],
   )
 
+  // Pasife alınmış biri mevcut vardiyasında "—" görünmesin diye isim
+  // tablosu tüm çalışanlardan kurulur; ekleme listesi ayrıca aktifleri kullanır.
   const employeeById = useMemo(() => {
     const map = new Map<string, Employee>()
-    for (const e of data?.employees ?? []) map.set(e.id, e)
+    for (const e of data?.allEmployees ?? []) map.set(e.id, e)
     return map
   }, [data])
 

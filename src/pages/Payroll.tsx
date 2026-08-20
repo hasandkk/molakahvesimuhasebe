@@ -2,7 +2,7 @@ import { Fragment, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { errorMessage } from '../lib/errors'
 import { useQuery } from '../lib/useQuery'
-import { fetchAllEmployees } from '../lib/refData'
+import { fetchActiveEmployees, fetchAllEmployees } from '../lib/refData'
 import { addDays, formatDayMonth, formatLong, formatShort, startOfWeek, today } from '../lib/date'
 import { money, parseNumber } from '../lib/format'
 import type {
@@ -28,15 +28,20 @@ import {
 import { PrintDoc, PrintEmpty, PrintFacts, PrintSection } from '../components/print'
 
 type Data = {
+  /** Hesaplama ve isim çözümü için — pasife alınmış biri geçmiş dönemde
+   *  çalışmışsa ödeme listesinde görünmeye devam etmeli. */
   employees: Employee[]
+  /** Prim açılır listesi için — ayrılmış birine prim yazılmaz. */
+  activeEmployees: Employee[]
   payroll: PayrollRow[]
   bonuses: EmployeeBonus[]
   settings: PayrollSettings | null
 }
 
 async function load(from: string, to: string): Promise<Data> {
-  const [employees, payroll, bonuses, settings] = await Promise.all([
+  const [employees, activeEmployees, payroll, bonuses, settings] = await Promise.all([
     fetchAllEmployees(),
+    fetchActiveEmployees(),
     supabase.rpc('payroll', { p_from: from, p_to: to }),
     supabase.from('employee_bonuses').select('*').gte('work_date', from).lte('work_date', to),
     supabase.from('payroll_settings').select('*').limit(1),
@@ -46,6 +51,7 @@ async function load(from: string, to: string): Promise<Data> {
   if (settings.error) throw settings.error
   return {
     employees,
+    activeEmployees,
     payroll: (payroll.data ?? []) as PayrollRow[],
     bonuses: (bonuses.data ?? []) as EmployeeBonus[],
     settings: (settings.data?.[0] as PayrollSettings | undefined) ?? null,
@@ -389,7 +395,8 @@ export default function Payroll() {
 
       <BonusCard
         key={`${period.from}-${period.to}`}
-        employees={data?.employees ?? []}
+        employees={data?.activeEmployees ?? []}
+        allEmployees={data?.employees ?? []}
         bonuses={data?.bonuses ?? []}
         from={period.from}
         to={period.to}
@@ -601,12 +608,16 @@ function SettingsCard({
 
 function BonusCard({
   employees,
+  allEmployees,
   bonuses,
   from,
   to,
   onChanged,
 }: {
+  /** Açılır listede sadece aktifler görünür. */
   employees: Employee[]
+  /** İsim çözümü pasifleri de kapsar; eski prim kayıtları "—" olmasın. */
+  allEmployees: Employee[]
   bonuses: EmployeeBonus[]
   from: string
   to: string
@@ -654,7 +665,7 @@ function BonusCard({
     setBusy(false)
   }
 
-  const nameOf = (id: string) => employees.find((e) => e.id === id)?.full_name ?? '—'
+  const nameOf = (id: string) => allEmployees.find((e) => e.id === id)?.full_name ?? '—'
   const list = [...bonuses].sort((a, b) => b.work_date.localeCompare(a.work_date))
 
   return (

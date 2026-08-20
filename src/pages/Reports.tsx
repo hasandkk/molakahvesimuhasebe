@@ -360,14 +360,25 @@ function ShiftHistoryTab({ data, period }: { data: Data; period: string }) {
 
   const selected = data.employees.find((e) => e.id === employeeId)
 
+  /**
+   * Filtrede pasife alınanlar görünmez; ama seçili aralıkta kaydı olan biri
+   * pasifleştirilmişse listede kalır, yoksa geçmişine ulaşılamazdı.
+   */
+  const withRecords = useMemo(
+    () => new Set(data.shifts.map((s) => s.employee_id)),
+    [data.shifts],
+  )
+  const filterOptions = data.employees.filter((e) => e.is_active || withRecords.has(e.id))
+
   return (
     <>
       <Field label="Çalışan" hint="Boş bırakırsan bütün günler stand stand listelenir.">
         <Select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
           <option value="">Tüm çalışanlar</option>
-          {data.employees.map((e) => (
+          {filterOptions.map((e) => (
             <option key={e.id} value={e.id}>
               {e.full_name}
+              {e.is_active ? '' : ' (pasif)'}
             </option>
           ))}
         </Select>
