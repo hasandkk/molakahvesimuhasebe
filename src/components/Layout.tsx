@@ -1,6 +1,15 @@
 import { Suspense, useEffect } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
+import { Logo } from './Logo'
+import {
+  IconHome,
+  IconPayroll,
+  IconReports,
+  IconSettings,
+  IconShifts,
+  IconStock,
+} from './icons'
 
 /**
  * Sayfa paketleri küçük (2-4 KB). Tarayıcı boşa düştüğünde hepsini indir ki
@@ -46,14 +55,14 @@ function PageSkeleton() {
  * başlıktaki dişliye taşındı, masaüstü kenar menüsünde duruyor.
  */
 const NAV = [
-  { to: '/', label: 'Özet', icon: '🏠', end: true },
-  { to: '/vardiya', label: 'Vardiya', icon: '📋' },
-  { to: '/stok', label: 'Stok', icon: '📦' },
-  { to: '/maas', label: 'Maaş', icon: '💰' },
-  { to: '/raporlar', label: 'Rapor', icon: '📊' },
+  { to: '/', label: 'Özet', Icon: IconHome, end: true },
+  { to: '/vardiya', label: 'Vardiya', Icon: IconShifts, end: false },
+  { to: '/stok', label: 'Stok', Icon: IconStock, end: false },
+  { to: '/maas', label: 'Maaş', Icon: IconPayroll, end: false },
+  { to: '/raporlar', label: 'Rapor', Icon: IconReports, end: false },
 ]
 
-const SETTINGS_NAV = { to: '/tanimlar', label: 'Tanımlar', icon: '⚙️', end: false }
+const SETTINGS_NAV = { to: '/tanimlar', label: 'Tanımlar', Icon: IconSettings, end: false }
 
 export default function Layout() {
   const { displayName, signOut } = useAuth()
@@ -64,8 +73,8 @@ export default function Layout() {
       {/* Masaüstü kenar menüsü */}
       <aside className="hidden w-56 shrink-0 flex-col border-r border-stone-200 bg-white md:flex">
         <div className="px-4 py-5">
-          <div className="text-base font-semibold text-brand-800">☕ Mola Kahvesi</div>
-          <div className="text-xs text-stone-500">Stand yönetimi</div>
+          <Logo />
+          <div className="mt-1 text-xs text-stone-500">Stand yönetimi</div>
         </div>
         <nav className="flex-1 space-y-1 px-2">
           {[...NAV, SETTINGS_NAV].map((item) => (
@@ -79,8 +88,8 @@ export default function Layout() {
                 }`
               }
             >
-              <span aria-hidden>{item.icon}</span>
-              {item.label === 'Tanım' ? 'Tanımlar' : item.label}
+              <item.Icon className="h-[18px] w-[18px] shrink-0" />
+              {item.label}
             </NavLink>
           ))}
         </nav>
@@ -98,7 +107,7 @@ export default function Layout() {
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Mobil başlık — kaydırırken üstte kalır */}
         <header className="sticky top-0 z-20 flex items-center justify-between border-b border-stone-200 bg-white/95 px-4 py-3 backdrop-blur md:hidden">
-          <span className="text-sm font-semibold text-brand-800">☕ Mola Kahvesi</span>
+          <Logo size="sm" />
           <span className="-mr-2 flex items-center gap-1">
             <NavLink
               to={SETTINGS_NAV.to}
@@ -109,7 +118,7 @@ export default function Layout() {
                 }`
               }
             >
-              <span aria-hidden>{SETTINGS_NAV.icon}</span>
+              <SETTINGS_NAV.Icon className="h-[18px] w-[18px]" />
             </NavLink>
             <button
               onClick={() => void signOut()}
@@ -144,12 +153,11 @@ export default function Layout() {
               {({ isActive }) => (
                 <>
                   <span
-                    className={`grid h-7 w-10 place-items-center rounded-lg text-base transition ${
+                    className={`grid h-7 w-10 place-items-center rounded-lg transition ${
                       isActive ? 'bg-brand-100' : ''
                     }`}
-                    aria-hidden
                   >
-                    {item.icon}
+                    <item.Icon className="h-[18px] w-[18px]" />
                   </span>
                   <span className="w-full truncate text-center">{item.label}</span>
                 </>

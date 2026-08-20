@@ -1,16 +1,26 @@
 @import 'tailwindcss';
 
 @theme {
-  --color-brand-50: #faf6f2;
-  --color-brand-100: #f2e8de;
-  --color-brand-200: #e3cfbb;
-  --color-brand-300: #cfae8f;
-  --color-brand-400: #b98a64;
-  --color-brand-500: #a06e47;
-  --color-brand-600: #85573a;
-  --color-brand-700: #6b4531;
-  --color-brand-800: #57392c;
-  --color-brand-900: #3d2a21;
+  /* Marka rengi ürün ambalajından: derin bordo + altın.
+     brand-700 ana ton (ambalajın gövde rengi), gold-* altın vurgu. */
+  --color-brand-50: #fdf5f7;
+  --color-brand-100: #fae7ea;
+  --color-brand-200: #f2c9d1;
+  --color-brand-300: #e5a0ae;
+  --color-brand-400: #cd6c81;
+  --color-brand-500: #ad4359;
+  --color-brand-600: #8c2c43;
+  --color-brand-700: #6b1f32;
+  --color-brand-800: #551827;
+  --color-brand-900: #3c111c;
+
+  --color-gold-100: #f8efdb;
+  --color-gold-200: #eeddb4;
+  --color-gold-300: #e0c688;
+  --color-gold-400: #d3ae63;
+  --color-gold-500: #c9a259;
+  --color-gold-600: #a8843f;
+  --color-gold-700: #866730;
 }
 
 html {

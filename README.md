@@ -122,6 +122,25 @@ tarih aralığı için de hesaplatabilirsin.
   değil. Yoksa her ödeme döneminde herkes yeniden “ilk gün” olurdu.
 - **Aynı gün iki vardiya çalışılsa da bir gün sayılır** — ücret günlük.
 
+### Marka
+
+Renkler ürün ambalajından alındı: gövde rengi **derin bordo** (`brand-700`,
+`#6b1f32`), vurgu **altın** (`gold-500`, `#c9a259`). Tailwind teması
+`src/index.css` içindeki `@theme` bloğunda.
+
+Logo ambalajdaki kilidi tekrar eder: altın kare çerçeve, içinde geometrik
+"MOLA". Tek çizim `src/components/Logo.tsx` ve `public/logo.svg` içinde;
+PWA/sekme ikonları (`icon-192`, `icon-512`, `icon-maskable-512`,
+`apple-touch-icon`, `favicon-32`) bu çizimden üretildi.
+
+Ambalajdaki dikey tarama dokusu bilerek alınmadı — 32-48 pikselde harfleri
+parçalayıp okunmaz hale getiriyor. Altın, beyaz üzerinde metin için yeterli
+kontrastı vermediğinden yazıda kullanılmaz; sadece işarette durur.
+
+Menü ikonları tek renk çizgi ikonlar (`src/components/icons.tsx`). Önceden
+emoji kullanılıyordu; her işletim sisteminde farklı görünüyor ve markayla
+ilgisiz renkler taşıyorlardı.
+
 ### PDF raporları
 
 “Raporlar” ve “Maaş” ekranlarındaki **PDF / Yazdır** düğmesi, o an açık olan

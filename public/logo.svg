@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <title>Mola Kahvesi</title>
+  <rect width="100" height="100" rx="22" fill="#6b1f32"/>
+  <g fill="none" stroke="#c9a259" stroke-linejoin="miter">
+    <rect x="13" y="13" width="74" height="74" stroke-width="3"/>
+    <g stroke-width="3.4">
+      <path d="M23 66V36l5.5 14L34 36v30"/>
+      <rect x="38" y="36" width="11" height="30" rx="4"/>
+      <path d="M53 36v30h9"/>
+      <path d="M66 66l5.5-30L77 66"/>
+      <path d="M67.6 57h7.8"/>
+    </g>
+  </g>
+</svg>

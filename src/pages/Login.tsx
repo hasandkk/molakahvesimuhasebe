@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabase'
 import { errorMessage } from '../lib/errors'
 import { Button, ErrorBox, Field, Input } from '../components/ui'
+import { LogoBadge } from '../components/Logo'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -21,9 +22,9 @@ export default function Login() {
   return (
     <div className="grid min-h-dvh place-items-center bg-stone-100 px-4">
       <form onSubmit={onSubmit} className="w-full max-w-sm space-y-4 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
-        <div className="text-center">
-          <div className="text-2xl">☕</div>
-          <h1 className="mt-1 text-lg font-semibold text-stone-900">Mola Kahvesi</h1>
+        <div className="flex flex-col items-center text-center">
+          <LogoBadge className="h-16 w-16" />
+          <h1 className="mt-3 text-lg font-semibold text-stone-900">Mola Kahvesi</h1>
           <p className="text-sm text-stone-500">Stand yönetim paneli</p>
         </div>
 
