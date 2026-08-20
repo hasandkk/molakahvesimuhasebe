@@ -7,18 +7,18 @@ export type Stand = {
 }
 
 /**
- * 'kademeli' — ilk gün ücretsiz, sonra kademe kademe artar
- * 'tam'      — ilk günden itibaren tam ücret + yemek (deneyimli işe alım
- *              ya da program kurulmadan önce başlamış kişi)
- * 'odemesiz' — hiç ödeme yok: yevmiye de yemek de 0 (ortaklar, ücretsiz
- *              çalışanlar). Prim girilirse yine de hesaba katılır.
+ * 'kademeli' — ilk günler düşük yevmiye, sonrasında tam ücret
+ * 'tam'      — ilk günden itibaren tam ücret (deneyimli işe alım ya da
+ *              program kurulmadan önce başlamış kişi)
+ * 'odemesiz' — hiç yevmiye yok (ortaklar, ücretsiz çalışanlar).
+ *              Prim girilirse yine de hesaba katılır.
  */
 export type WageMode = 'kademeli' | 'tam' | 'odemesiz'
 
 export const WAGE_MODE_LABELS: Record<WageMode, string> = {
-  kademeli: 'Kademeli (eğitim → 3 gün → tam)',
+  kademeli: 'Kademeli (ilk günler düşük → sonra tam)',
   tam: 'İlk günden tam ücret',
-  odemesiz: 'Ödeme yok (yevmiye ve yemek 0)',
+  odemesiz: 'Ödeme yok (yevmiye 0)',
 }
 
 export type Employee = {
@@ -189,13 +189,14 @@ export type PayrollRow = {
   is_training: boolean
 }
 
+/**
+ * Tabloda first_day_wage / first_day_meal / meal_wage kolonları hâlâ duruyor
+ * ama artık kullanılmıyor: ilk gün de normal vardiya, yemek ücreti yok.
+ */
 export type PayrollSettings = {
-  first_day_wage: number
-  first_day_meal: number
   tier1_days: number
   tier1_wage: number
   tier2_wage: number
-  meal_wage: number
 }
 
 export type EmployeeBonus = {

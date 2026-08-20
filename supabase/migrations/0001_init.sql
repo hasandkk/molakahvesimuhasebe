@@ -105,11 +105,11 @@ create unique index if not exists stands_name_uniq on public.stands (lower(name)
 -- ---------------------------------------------------------------------
 -- employees — çalışanlar (sisteme giriş yapmazlar, sadece kayıtlıdırlar)
 -- ---------------------------------------------------------------------
---   wage_mode = 'kademeli' -> ilk gün ücretsiz, sonra kademe kademe artar
---   wage_mode = 'tam'      -> ilk günden itibaren tam ücret + yemek.
+--   wage_mode = 'kademeli' -> ilk günler düşük yevmiye, sonrası tam ücret
+--   wage_mode = 'tam'      -> ilk günden itibaren tam ücret.
 --                             Deneyimli işe alımlar ve program kurulmadan
 --                             önce çalışmaya başlamış kişiler için.
---   wage_mode = 'odemesiz' -> hiç ödeme yok: yevmiye de yemek de 0.
+--   wage_mode = 'odemesiz' -> hiç yevmiye yok.
 --                             Ortaklar ve ücretsiz çalışanlar için.
 --   daily_wage doluysa son kademede genel tutar yerine o kullanılır.
 create table if not exists public.employees (
@@ -221,11 +221,13 @@ create index if not exists shift_assignments_employee_idx on public.shift_assign
 
 -- ---------------------------------------------------------------------
 -- payroll_settings — maaş kademeleri. Tek satırdır (id her zaman true).
---   1. gün                         -> first_day_wage / first_day_meal
---   sonraki tier1_days gün          -> tier1_wage + meal_wage
---   ondan sonrası                   -> tier2_wage + meal_wage
+--   ilk tier1_days gün  -> tier1_wage
+--   ondan sonrası       -> tier2_wage
+--   İlk gün de normal vardiya sayılır, ayrı bir eğitim günü indirimi yok.
 --   Çalışana özel ücret girilmişse (employees.daily_wage) son kademede
 --   tier2_wage yerine o kullanılır.
+--   first_day_wage / first_day_meal / meal_wage kolonları eski kurala aitti;
+--   artık okunmuyor, eski kurulumlar bozulmasın diye tabloda bırakıldı.
 -- ---------------------------------------------------------------------
 create table if not exists public.payroll_settings (
   id              boolean primary key default true check (id),
@@ -234,7 +236,7 @@ create table if not exists public.payroll_settings (
   tier1_days      int           not null default 3 check (tier1_days >= 0),
   tier1_wage      numeric(12,2) not null default 1000,
   tier2_wage      numeric(12,2) not null default 1500,
-  meal_wage       numeric(12,2) not null default 100,
+  meal_wage       numeric(12,2) not null default 0,
   updated_at      timestamptz   not null default now()
 );
 

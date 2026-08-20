@@ -605,18 +605,28 @@ function StockHistoryTab({ data }: { data: Data }) {
 
 /* ----------------------------------------------------------------- Maaş */
 
-type PayrollData = { payroll: PayrollRow[]; bonuses: EmployeeBonus[] }
+type PayrollData = {
+  payroll: PayrollRow[]
+  bonuses: EmployeeBonus[]
+  settings: PayrollSettings | null
+}
 
+// Kademeler de burada okunuyor: "kaydet"ten sonra reload() ayarları da
+// tazelesin diye. Üstteki load() ayrı bir kopya tutuyor ama bu sekmede
+// her zaman buradaki taze hali kullanılır.
 async function loadPayroll(from: string, to: string): Promise<PayrollData> {
-  const [payroll, bonuses] = await Promise.all([
+  const [payroll, bonuses, settings] = await Promise.all([
     supabase.rpc('payroll', { p_from: from, p_to: to }),
     supabase.from('employee_bonuses').select('*').gte('work_date', from).lte('work_date', to),
+    supabase.from('payroll_settings').select('*').limit(1),
   ])
   if (payroll.error) throw payroll.error
   if (bonuses.error) throw bonuses.error
+  if (settings.error) throw settings.error
   return {
     payroll: (payroll.data ?? []) as PayrollRow[],
     bonuses: (bonuses.data ?? []) as EmployeeBonus[],
+    settings: (settings.data?.[0] as PayrollSettings | undefined) ?? null,
   }
 }
 
@@ -644,27 +654,26 @@ function PayrollTab({ data, from, to }: { data: Data; from: string; to: string }
     reload,
   } = useQuery(() => loadPayroll(period.from, period.to), [period.from, period.to])
 
-  const s = data.settings
+  // Kaydetten sonra taze hali gelsin diye önce sekmenin kendi verisi.
+  const s = pd?.settings ?? data.settings
 
   /**
-   * kademeli: 1. gün ücretsiz → sonraki tier1_days gün tier1 → devamı tam ücret
-   * tam:      ilk günden itibaren tam ücret + yemek
+   * kademeli: ilk tier1_days gün tier1 ücreti → devamı tam ücret
+   * tam:      ilk günden itibaren tam ücret
    */
   const rateFor = (dayIndex: number, employeeWage: number | null, wageMode: WageMode) => {
-    if (!s) return { wage: 0, meal: 0 }
-    if (wageMode === 'odemesiz') return { wage: 0, meal: 0 }
+    if (!s) return 0
+    if (wageMode === 'odemesiz') return 0
     const fullWage = employeeWage !== null ? Number(employeeWage) : Number(s.tier2_wage)
-    if (wageMode === 'tam') return { wage: fullWage, meal: Number(s.meal_wage) }
-    if (dayIndex === 1) return { wage: Number(s.first_day_wage), meal: Number(s.first_day_meal) }
-    if (dayIndex <= 1 + s.tier1_days) return { wage: Number(s.tier1_wage), meal: Number(s.meal_wage) }
-    return { wage: fullWage, meal: Number(s.meal_wage) }
+    if (wageMode === 'tam') return fullWage
+    if (dayIndex <= s.tier1_days) return Number(s.tier1_wage)
+    return fullWage
   }
 
   type DayLine = {
     date: string
     dayIndex: number | null
     wage: number
-    meal: number
     bonus: number
     isTraining: boolean
   }
@@ -679,7 +688,6 @@ function PayrollTab({ data, from, to }: { data: Data; from: string; to: string }
         wageMode: WageMode
         days: DayLine[]
         wageTotal: number
-        mealTotal: number
         bonusTotal: number
       }
     >()
@@ -690,7 +698,7 @@ function PayrollTab({ data, from, to }: { data: Data; from: string; to: string }
     for (const p of pd.payroll) {
       const emp = data.employees.find((e) => e.id === p.employee_id)
       const wageMode = (emp?.wage_mode ?? 'kademeli') as WageMode
-      const { wage, meal } = rateFor(p.day_index, emp?.daily_wage ?? null, wageMode)
+      const wage = rateFor(p.day_index, emp?.daily_wage ?? null, wageMode)
       const bonus = bonusOf(p.employee_id, p.work_date)
 
       const row =
@@ -701,19 +709,16 @@ function PayrollTab({ data, from, to }: { data: Data; from: string; to: string }
           wageMode,
           days: [],
           wageTotal: 0,
-          mealTotal: 0,
           bonusTotal: 0,
         }
       row.days.push({
         date: p.work_date,
         dayIndex: p.day_index,
         wage,
-        meal,
         bonus,
         isTraining: p.is_training,
       })
       row.wageTotal += wage
-      row.mealTotal += meal
       row.bonusTotal += bonus
       map.set(p.employee_id, row)
     }
@@ -731,14 +736,12 @@ function PayrollTab({ data, from, to }: { data: Data; from: string; to: string }
           wageMode: (emp?.wage_mode ?? 'kademeli') as WageMode,
           days: [],
           wageTotal: 0,
-          mealTotal: 0,
           bonusTotal: 0,
         }
       target.days.push({
         date: b.work_date,
         dayIndex: null,
         wage: 0,
-        meal: 0,
         bonus: Number(b.amount),
         isTraining: false,
       })
@@ -750,7 +753,7 @@ function PayrollTab({ data, from, to }: { data: Data; from: string; to: string }
       .map((r) => ({
         ...r,
         days: [...r.days].sort((a, b) => a.date.localeCompare(b.date)),
-        total: r.wageTotal + r.mealTotal + r.bonusTotal,
+        total: r.wageTotal + r.bonusTotal,
       }))
       .sort((a, b) => b.total - a.total)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -759,11 +762,10 @@ function PayrollTab({ data, from, to }: { data: Data; from: string; to: string }
   const grand = rows.reduce(
     (acc, r) => ({
       wage: acc.wage + r.wageTotal,
-      meal: acc.meal + r.mealTotal,
       bonus: acc.bonus + r.bonusTotal,
       total: acc.total + r.total,
     }),
-    { wage: 0, meal: 0, bonus: 0, total: 0 },
+    { wage: 0, bonus: 0, total: 0 },
   )
 
   const donemMetni = `${formatDayMonth(period.from)} – ${formatDayMonth(period.to)}`
@@ -843,9 +845,8 @@ function PayrollTab({ data, from, to }: { data: Data; from: string; to: string }
         <ErrorBox message="Ücret kademeleri bulunamadı, bu yüzden tüm tutarlar sıfır görünüyor. 0001_init.sql betiğini çalıştır." />
       )}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-3 gap-3">
         <Stat label="Yevmiye" value={money(grand.wage)} />
-        <Stat label="Yemek" value={money(grand.meal)} />
         <Stat label="Prim" value={money(grand.bonus)} tone={grand.bonus < 0 ? 'bad' : 'default'} />
         <Stat label="Toplam ödenecek" value={money(grand.total)} tone="warn" />
       </div>
@@ -907,15 +908,9 @@ function PayrollTab({ data, from, to }: { data: Data; from: string; to: string }
                         )}
                       </span>
                       <span className="text-xs text-stone-500">
-                        {workedDays} gün · yevmiye {money(r.wageTotal)} · yemek {money(r.mealTotal)}
+                        {workedDays} gün · yevmiye {money(r.wageTotal)}
                         {r.bonusTotal !== 0 && ` · prim ${money(r.bonusTotal)}`}
                       </span>
-                      {r.wageMode === 'kademeli' && r.total === 0 && r.days.some((d) => d.dayIndex === 1) && (
-                        <span className="mt-0.5 block text-xs text-amber-700">
-                          İlk çalışma günü ücretsiz sayıldı. Daha önce başlamış biriyse
-                          “Tanımlar → Çalışanlar”dan ücret modelini “ilk günden tam ücret” yap.
-                        </span>
-                      )}
                     </span>
                     <span className="shrink-0 text-right">
                       <span className="block font-semibold tabular-nums text-stone-900">
@@ -934,14 +929,10 @@ function PayrollTab({ data, from, to }: { data: Data; from: string; to: string }
                             {d.dayIndex !== null && (
                               <span className="ml-1 text-stone-400">{d.dayIndex}. gün</span>
                             )}
-                            {d.dayIndex === 1 && d.wage === 0 && (
-                              <span className="ml-1 text-amber-700">ücretsiz</span>
-                            )}
                             {d.isTraining && <span className="ml-1 text-amber-700">eğitim</span>}
                           </span>
                           <span className="shrink-0 tabular-nums text-stone-700">
                             {money(d.wage)}
-                            {d.meal > 0 && <span className="text-stone-400"> +{money(d.meal)}</span>}
                             {d.bonus !== 0 && (
                               <span className={d.bonus < 0 ? 'text-red-700' : 'text-emerald-700'}>
                                 {' '}
@@ -990,12 +981,9 @@ function SettingsCard({
     draft[key] ?? (settings ? String(settings[key]) : '')
 
   const fields: { key: keyof PayrollSettings; label: string; hint?: string }[] = [
-    { key: 'first_day_wage', label: 'İlk gün ücreti (₺)' },
-    { key: 'first_day_meal', label: 'İlk gün yemek (₺)' },
-    { key: 'tier1_days', label: 'İlk günden sonra kaç gün', hint: 'bu kadar gün düşük ücret' },
+    { key: 'tier1_days', label: 'İlk kaç gün düşük ücret', hint: 'işe başladığı günden itibaren' },
     { key: 'tier1_wage', label: 'Bu günlerin ücreti (₺)' },
     { key: 'tier2_wage', label: 'Sonraki günlerin ücreti (₺)' },
-    { key: 'meal_wage', label: 'Günlük yemek (₺)' },
   ]
 
   async function save() {
@@ -1027,11 +1015,9 @@ function SettingsCard({
         <Empty>Ayarlar bulunamadı — 0001_init.sql'i tekrar çalıştır.</Empty>
       ) : !open ? (
         <p className="text-sm text-stone-600">
-          İlk gün <strong>{money(settings.first_day_wage)}</strong> (yemek{' '}
-          {money(settings.first_day_meal)}) · sonraki <strong>{settings.tier1_days} gün</strong>{' '}
-          <strong>{money(settings.tier1_wage)}</strong> · devamı{' '}
-          <strong>{money(settings.tier2_wage)}</strong> · günlük yemek{' '}
-          <strong>{money(settings.meal_wage)}</strong>
+          İlk <strong>{settings.tier1_days} gün</strong> günlük{' '}
+          <strong>{money(settings.tier1_wage)}</strong> · devamı günlük{' '}
+          <strong>{money(settings.tier2_wage)}</strong>
         </p>
       ) : (
         <>

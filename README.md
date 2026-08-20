@@ -11,7 +11,7 @@ React + Vite + TypeScript + Tailwind, arka planda Supabase (Postgres + Auth).
 | **Vardiya**  | **Gün** görünümünde plan yapılır, **Hafta** görünümünde tüm hafta tek ekranda görülür. Standart vardiyalar 08:00–15:30 ve 15:30–23:00; saatler değiştirilebilir. Aynı vardiyada birden fazla kişi çalışabilir, eğitime gelenler ayrı tür olarak yazılır. Saat çakışması uyarı verir. Mesaj stand bazlı veya toplu kopyalanır |
 | **Kasa**     | Stand bazlı gün sonu nakit/POS girişi · para çekme, gider, kasaya giriş, bankaya yatırma hareketleri · fiziki kasa sayımı ve açık/fazla tespiti |
 | **Stok**     | **Günlük satış** girişi (asıl günlük iş) · **Sayım** ile ara sıra fiziki kontrol ve fire/kayıp tespiti · depodan standa **transfer** |
-| **Raporlar** | Üç sekme: **Özet** (stand bazlı ciro, kim ne kadar çekti, gider kalemleri) · **Vardiya geçmişi** (gün gün kim hangi standda, hangi saatte; çalışana göre süzülebilir) · **Satış geçmişi** (hangi gün hangi standda ne satıldı + sayım farkları) · **Maaş** (kademeli yevmiye + yemek + prim hesabı) |
+| **Raporlar** | Üç sekme: **Özet** (stand bazlı ciro, kim ne kadar çekti, gider kalemleri) · **Vardiya geçmişi** (gün gün kim hangi standda, hangi saatte; çalışana göre süzülebilir) · **Satış geçmişi** (hangi gün hangi standda ne satıldı + sayım farkları) · **Maaş** (kademeli yevmiye + prim hesabı) |
 | **Tanımlar** | Stand ve çalışan ekleme, **isim/bilgi düzenleme**, pasifleştirme; çalışan silme (geçmişi varsa uyarır) · kahve çeşidi yönetimi |
 
 Stand sayısı sabit değil — “Tanımlar” ekranından istediğin kadar stand ekler,
@@ -79,20 +79,21 @@ uyarısız silinebilir.
 ### Maaş mantığı
 
 ```
-1. gün                      -> ilk gün ücreti (varsayılan 0), yemek yok
-sonraki N gün (varsayılan 3) -> kademe 1 ücreti (varsayılan 1.000 ₺) + yemek
-devamı                       -> kademe 2 ücreti (varsayılan 1.500 ₺) + yemek
+ilk N gün (varsayılan 3) -> kademe 1 ücreti (varsayılan 1.000 ₺)
+devamı                   -> kademe 2 ücreti (varsayılan 1.500 ₺)
 ```
+
+İlk gün de normal vardiya sayılır — ayrı bir ücretsiz eğitim günü yoktur.
+Yemek ücreti hesaba katılmaz.
 
 Tutarların hepsi “Raporlar → Maaş → Ücret kademeleri” ekranından değiştirilebilir.
 
 Her çalışan için **ücret modeli** seçilir (“Tanımlar → Çalışanlar”):
 
 - **Kademeli** — yukarıdaki sıra uygulanır. Yeni ve deneyimsiz işe alımlar için.
-- **İlk günden tam ücret** — eğitim günü ve düşük kademe atlanır, ilk günden
-  itibaren tam ücret + yemek. Deneyimli işe alımlar ve program kurulmadan önce
-  çalışmaya başlamış kişiler için.
-- **Ödeme yok** — yevmiye de yemek de 0. Ortaklar ve ücretsiz çalışanlar için.
+- **İlk günden tam ücret** — düşük kademe atlanır, ilk günden itibaren tam ücret.
+  Deneyimli işe alımlar ve program kurulmadan önce çalışmaya başlamış kişiler için.
+- **Ödeme yok** — yevmiye 0. Ortaklar ve ücretsiz çalışanlar için.
   Kişi listede görünür ama tutarı sıfırdır; yine de prim yazılabilir.
 
 Bir çalışana özel tutar vermek istersen aynı ekrandaki yevmiye alanını doldur;
