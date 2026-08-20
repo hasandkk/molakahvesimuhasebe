@@ -10,7 +10,6 @@ function usePrefetchPages() {
   useEffect(() => {
     const prefetch = () => {
       void import('../pages/Shifts')
-      void import('../pages/Cash')
       void import('../pages/Stock')
       void import('../pages/Reports')
       void import('../pages/Settings')
@@ -43,7 +42,6 @@ function PageSkeleton() {
 const NAV = [
   { to: '/', label: 'Özet', icon: '🏠', end: true },
   { to: '/vardiya', label: 'Vardiya', icon: '📋' },
-  { to: '/kasa', label: 'Kasa', icon: '💵' },
   { to: '/stok', label: 'Stok', icon: '📦' },
   { to: '/raporlar', label: 'Rapor', icon: '📊' },
   { to: '/tanimlar', label: 'Tanım', icon: '⚙️' },
@@ -110,7 +108,7 @@ export default function Layout() {
         </main>
 
         {/* Mobil alt menü */}
-        <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-6 border-t border-stone-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+        <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-stone-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
           {NAV.map((item) => (
             <NavLink
               key={item.to}

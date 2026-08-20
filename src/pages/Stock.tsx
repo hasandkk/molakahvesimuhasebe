@@ -284,7 +284,6 @@ function SalesTab({
         <p className="mt-3 text-xs text-stone-500">
           Buraya o gün <strong>satılan adedi</strong> yaz; stok kendiliğinden düşer. Toplam stoğu
           saymak zorunda değilsin — sayımı ara sıra “Sayım” sekmesinden kontrol amaçlı yaparsın.
-          Ciro hesabı burada yapılmaz; günlük ciroyu “Kasa” ekranından girersin.
         </p>
       </Card>
 

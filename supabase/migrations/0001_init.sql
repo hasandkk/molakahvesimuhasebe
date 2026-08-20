@@ -309,6 +309,14 @@ as $$
   order by e.full_name, s.work_date;
 $$;
 
+-- =====================================================================
+-- KASA TABLOLARI — ARTIK KULLANILMIYOR
+-- Kasa modülü programdan kaldırıldı (ciro, para çekme, gider, kasa
+-- sayımı). Tablolar eski kayıtlar silinmesin diye duruyor; uygulama
+-- bunlara hiç dokunmuyor. Geçmiş veriye ihtiyacın kalmazsa Supabase SQL
+-- Editor'de tek tek "drop table ... cascade" ile silebilirsin.
+-- =====================================================================
+
 -- ---------------------------------------------------------------------
 -- daily_revenues — stand başına gün sonu nakit / POS cirosu
 -- ---------------------------------------------------------------------
@@ -674,58 +682,10 @@ as $$
 $$;
 
 -- ---------------------------------------------------------------------
--- Kasa özetleri
---   Nakit bakiye = toplam nakit ciro + hareketlerin işaretli toplamı.
---   POS tutarları bankaya gittiği için nakit bakiyeye dahil edilmez.
+-- Kasa özet fonksiyonları (cash_summary, cash_balance_until) kaldırıldı.
+-- Yukarıdaki drop bloğu bu betik her çalıştığında onları da düşürür.
 -- ---------------------------------------------------------------------
-create or replace function public.cash_balance_until(p_date date)
-returns numeric
-language sql
-stable
-security invoker
-set search_path = public
-as $$
-  select coalesce((
-      select sum(cash_amount) from public.daily_revenues where business_date <= p_date
-    ), 0)
-    + coalesce((
-      select sum(signed_amount) from public.cash_movements where movement_date <= p_date
-    ), 0);
-$$;
 
-create or replace function public.cash_summary()
-returns table (
-  cash_income   numeric,
-  pos_income    numeric,
-  withdrawals   numeric,
-  expenses      numeric,
-  to_bank       numeric,
-  deposits      numeric,
-  cash_balance  numeric
-)
-language sql
-stable
-security invoker
-set search_path = public
-as $$
-  with rev as (
-    select coalesce(sum(cash_amount), 0) as cash_income,
-           coalesce(sum(pos_amount), 0)  as pos_income
-    from public.daily_revenues
-  ),
-  mv as (
-    select
-      coalesce(sum(amount) filter (where type = 'cekim'), 0)   as withdrawals,
-      coalesce(sum(amount) filter (where type = 'gider'), 0)   as expenses,
-      coalesce(sum(amount) filter (where type = 'bankaya'), 0) as to_bank,
-      coalesce(sum(amount) filter (where type = 'giris'), 0)   as deposits,
-      coalesce(sum(signed_amount), 0)                          as net
-    from public.cash_movements
-  )
-  select rev.cash_income, rev.pos_income, mv.withdrawals, mv.expenses, mv.to_bank, mv.deposits,
-         rev.cash_income + mv.net
-  from rev, mv;
-$$;
 
 -- ---------------------------------------------------------------------
 -- RLS — sadece giriş yapmış kullanıcılar (sen + ortağın) her şeye erişir.

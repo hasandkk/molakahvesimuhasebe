@@ -1,17 +1,16 @@
 # ☕ Mola Kahvesi — Stand Yönetim Paneli
 
-Kahve standları için vardiya planlama, kasa/muhasebe ve stok sayımı uygulaması.
+Kahve standları için vardiya planlama, stok takibi ve maaş hesabı uygulaması.
 React + Vite + TypeScript + Tailwind, arka planda Supabase (Postgres + Auth).
 
 ## Ne yapar
 
 | Ekran        | İçerik |
 |--------------|--------|
-| **Özet**     | Bugünkü ciro, aylık ciro, kasadaki nakit, yarınki vardiya durumu, ciro/sayım girilmemiş standlar |
+| **Özet**     | Yarınki vardiya durumu (hangi stand boş), bu haftanın vardiya sayısı, satışı girilmemiş standlar |
 | **Vardiya**  | **Gün** görünümünde plan yapılır, **Hafta** görünümünde tüm hafta tek ekranda görülür. Standart vardiyalar 08:00–15:30 ve 15:30–23:00; saatler değiştirilebilir. Aynı vardiyada birden fazla kişi çalışabilir, eğitime gelenler ayrı tür olarak yazılır. Saat çakışması uyarı verir. Mesaj stand bazlı veya toplu kopyalanır |
-| **Kasa**     | Stand bazlı gün sonu nakit/POS girişi · para çekme, gider, kasaya giriş, bankaya yatırma hareketleri · fiziki kasa sayımı ve açık/fazla tespiti |
 | **Stok**     | **Günlük satış** girişi (asıl günlük iş) · **Sayım** ile ara sıra fiziki kontrol ve fire/kayıp tespiti · depodan standa **transfer** |
-| **Raporlar** | Üç sekme: **Özet** (stand bazlı ciro, kim ne kadar çekti, gider kalemleri) · **Vardiya geçmişi** (gün gün kim hangi standda, hangi saatte; çalışana göre süzülebilir) · **Satış geçmişi** (hangi gün hangi standda ne satıldı + sayım farkları) · **Maaş** (kademeli yevmiye + prim hesabı) |
+| **Raporlar** | Dört sekme: **Özet** (stand ve çalışan başına vardiya sayıları) · **Vardiya geçmişi** (gün gün kim hangi standda, hangi saatte; çalışana göre süzülebilir) · **Satış geçmişi** (hangi gün hangi standda ne satıldı + sayım farkları) · **Maaş** (kademeli yevmiye + prim hesabı). Her sekme **PDF olarak yazdırılabilir** |
 | **Tanımlar** | Stand ve çalışan ekleme, **isim/bilgi düzenleme**, pasifleştirme; çalışan silme (geçmişi varsa uyarır) · kahve çeşidi yönetimi |
 
 Stand sayısı sabit değil — “Tanımlar” ekranından istediğin kadar stand ekler,
@@ -39,9 +38,9 @@ fark = sayılan − teorik stok      (eksi = fire / kayıp / girilmemiş satış
 Bir standın ilk sayımı baz oluşturur, sapma sayılmaz — öncesinde
 karşılaştıracak bir şey yoktur.
 
-**Stok modülünde para hesabı yoktur.** Kampanya ve çoklu satış olduğu için
-adet × fiyat gerçek ciroyu vermez; ciro “Kasa” ekranından stand bazlı elle
-girilir. Ürün fiyatı alanı bilgi amaçlıdır, hiçbir hesaba girmez.
+**Programda hiçbir yerde para/ciro hesabı yoktur.** Kampanya ve çoklu satış
+olduğu için adet × fiyat gerçek ciroyu vermez. Ürün fiyatı alanı bilgi
+amaçlıdır, hiçbir hesaba girmez. (Ciro takibi ayrı bir mobil programda yapılıyor.)
 
 ### Vardiya mantığı
 
@@ -67,7 +66,7 @@ kırmızı uyarı çıkar.
 
 ### Silme ve pasifleştirme
 
-Bir **standı** silmek, o standın tüm ciro, satış, sayım ve vardiya geçmişini de
+Bir **standı** silmek, o standın tüm satış, sayım ve vardiya geçmişini de
 siler (foreign key cascade). Bu yüzden stand silme yoktur; kullanılmayan stand
 **pasifleştirilir** — ekranlarda görünmez, geçmişi durur.
 
@@ -118,15 +117,22 @@ tarih aralığı için de hesaplatabilirsin.
   değil. Yoksa her ödeme döneminde herkes yeniden “ilk gün” olurdu.
 - **Aynı gün iki vardiya çalışılsa da bir gün sayılır** — ücret günlük.
 
-### Kasa mantığı
+### PDF raporları
 
-```
-kasadaki nakit = Σ nakit ciro − çekimler − giderler − bankaya yatanlar + kasaya girişler
-```
+“Raporlar” ekranındaki **PDF / Yazdır** düğmesi, o an açık olan sekmenin
+raporunu A4 düzeninde çıkarır. Menü, filtre ve düğmeler çıktıya karışmaz:
+ekrandaki mobil kartlar yerine yazdırmaya özel tablolar basılır.
 
-POS tutarları doğrudan bankaya geçtiği için nakit bakiyeye dahil edilmez, ayrı takip edilir.
-“Kasa sayımı” ekranında saydığın parayı girersin; sistem olması gerekenle karşılaştırıp
-açık/fazla tutarını hesaplar ve kaydeder.
+Çıktı tarayıcının yazdırma penceresinden üretilir — hedef olarak
+“PDF olarak kaydet” seçilirse dosya olarak iner. Telefonda da çalışır
+(iOS'ta Paylaş → Yazdır, Android'de Chrome → Yazdır → PDF olarak kaydet).
+Bu yol seçildiği için Türkçe karakterler sorunsuz çıkar ve uygulamaya ek
+bir PDF kütüphanesi yüklenmez.
+
+Maaş sekmesinin çıktısı bir **ödeme listesidir**: çalışan başına gün sayısı,
+yevmiye, prim, ödenecek tutar ve elden imzalatmak için bir **imza sütunu**
+içerir. Teknik tarafı `src/components/print.tsx` ve `src/index.css`
+içindeki `@media print` bloğunda.
 
 ## Kurulum
 
@@ -139,8 +145,7 @@ Supabase panelinde **SQL Editor**’ü aç ve sırayla çalıştır:
    - `supabase/seed.sql` — boş başlangıç: 3 stand ve tek kahve çeşidi
      (Mola Kahvesi, 5 gramajda), başka veri yok
    - `supabase/demo_data.sql` — **deneme verisi**: son 21 günün stok sayımları,
-     ciroları, vardiya planları, para hareketleri ve kasa sayımları. Uygulamayı
-     dolu görmek için bunu kullan. Tarihler `current_date`'e göre üretildiği için
+     satışları ve vardiya planları. Uygulamayı dolu görmek için bunu kullan. Tarihler `current_date`'e göre üretildiği için
      "bugün" ve "yarın" ekranları hep dolu gelir.
 
 Deneme verisini sonradan silmek için: `supabase/demo_data_temizle.sql`
@@ -200,16 +205,15 @@ Skill'leri güncellemek için: `npx skills add supabase/agent-skills`
 
 ## Günlük kullanım akışı
 
-1. **Akşam** — Stok ekranında her stand için sayımı gir.
-2. **Akşam** — Kasa ekranında her standın nakit ve POS cirosunu gir.
-3. **Akşam** — Vardiya ekranında vardiyayı (sabah/akşam/özel saat) seçip yarının planını yap, “Metni kopyala” ile gruba at.
-4. **Para aldığında** — Kasa → Para hareketleri’ne kimin ne kadar aldığını yaz.
-5. **Ara ara** — Kasa → Kasa sayımı ile fiziki parayı say, açık var mı bak.
+1. **Akşam** — Stok ekranında her stand için o günün satışını gir.
+2. **Akşam** — Vardiya ekranında vardiyayı (sabah/akşam/özel saat) seçip yarının planını yap, “Metni kopyala” ile gruba at.
+3. **Ara ara** — Stok → Sayım ile fiziki stoğu say, fire/kayıp var mı bak.
+4. **Pazartesi** — Raporlar → Maaş’ta haftanın ödeme listesini çıkar, istersen PDF olarak yazdır.
 
 ## Mobil
 
-Uygulama telefon öncelikli tasarlandı — akşam sayımı ve ciro girişi standın
-başında telefonla yapılıyor.
+Uygulama telefon öncelikli tasarlandı — akşam satış girişi ve vardiya planı
+standın başında telefonla yapılıyor.
 
 - Form alanları 16px: iOS bundan küçük yazı tipli bir alana odaklanınca sayfayı
   otomatik yakınlaştırıyor, bu engellendi.

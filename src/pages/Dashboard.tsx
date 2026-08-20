@@ -2,46 +2,36 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useQuery } from '../lib/useQuery'
 import { fetchActiveStands } from '../lib/refData'
-import { formatLong, startOfMonth, today, tomorrow } from '../lib/date'
-import { money } from '../lib/format'
+import { formatLong, today, tomorrow, weekDays } from '../lib/date'
 import type { Stand } from '../lib/types'
 import { Card, Empty, ErrorBox, Spinner, Stat } from '../components/ui'
 
 type Data = {
   stands: Stand[]
-  todayCash: number
-  todayPos: number
-  monthCash: number
-  monthPos: number
-  cashBalance: number
   tomorrowByStand: Map<string, number>
   trainingByStand: Map<string, number>
-  countedStandIds: Set<string>
-  missingRevenueStandIds: string[]
+  weekShifts: number
+  soldTodayStandIds: Set<string>
 }
 
 async function load(): Promise<Data> {
   const day = today()
   const next = tomorrow()
-  const monthStart = startOfMonth(day)
+  const week = weekDays(day)
 
-  const [stands, monthRevenues, summary, shifts, counts] = await Promise.all([
+  const [stands, shifts, weekRows, sales] = await Promise.all([
     fetchActiveStands(),
-    supabase
-      .from('daily_revenues')
-      .select('business_date, stand_id, cash_amount, pos_amount')
-      .gte('business_date', monthStart)
-      .lte('business_date', day),
-    supabase.rpc('cash_summary'),
     supabase.from('shift_assignments').select('stand_id, kind').eq('work_date', next),
-    supabase.from('stock_counts').select('stand_id').eq('count_date', day),
+    supabase
+      .from('shift_assignments')
+      .select('kind')
+      .gte('work_date', week[0])
+      .lte('work_date', week[6]),
+    supabase.from('stock_sales').select('stand_id').eq('sale_date', day),
   ])
 
-  const err = monthRevenues.error ?? summary.error ?? shifts.error ?? counts.error
+  const err = shifts.error ?? weekRows.error ?? sales.error
   if (err) throw err
-
-  const rows = monthRevenues.data ?? []
-  const todayRows = rows.filter((r) => r.business_date === day)
 
   // Eğitime gelenler vardiya sayılmaz — bir standda sadece eğitim varsa
   // o stand hâlâ "atama yok" durumundadır.
@@ -52,27 +42,20 @@ async function load(): Promise<Data> {
     target.set(row.stand_id, (target.get(row.stand_id) ?? 0) + 1)
   }
 
-  const standList = stands
-  const summaryRow = Array.isArray(summary.data) ? (summary.data[0] as { cash_balance: number } | undefined) : null
-
   return {
-    stands: standList,
-    todayCash: todayRows.reduce((s, r) => s + Number(r.cash_amount), 0),
-    todayPos: todayRows.reduce((s, r) => s + Number(r.pos_amount), 0),
-    monthCash: rows.reduce((s, r) => s + Number(r.cash_amount), 0),
-    monthPos: rows.reduce((s, r) => s + Number(r.pos_amount), 0),
-    cashBalance: Number(summaryRow?.cash_balance ?? 0),
+    stands,
     tomorrowByStand,
     trainingByStand,
-    countedStandIds: new Set((counts.data ?? []).map((c) => c.stand_id)),
-    missingRevenueStandIds: standList
-      .filter((s) => !todayRows.some((r) => r.stand_id === s.id))
-      .map((s) => s.id),
+    weekShifts: (weekRows.data ?? []).filter((r) => r.kind !== 'egitim').length,
+    soldTodayStandIds: new Set((sales.data ?? []).map((s) => s.stand_id)),
   }
 }
 
 export default function Dashboard() {
   const { data, loading, error } = useQuery(load, [])
+
+  const assigned = data ? data.stands.filter((s) => (data.tomorrowByStand.get(s.id) ?? 0) > 0) : []
+  const missingSales = data ? data.stands.filter((s) => !data.soldTodayStandIds.has(s.id)) : []
 
   return (
     <>
@@ -86,14 +69,14 @@ export default function Dashboard() {
 
       {data && (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Stat label="Bugün ciro" value={money(data.todayCash + data.todayPos)} sub={`Nakit ${money(data.todayCash)} · POS ${money(data.todayPos)}`} />
-            <Stat label="Bu ay ciro" value={money(data.monthCash + data.monthPos)} sub={`Nakit ${money(data.monthCash)} · POS ${money(data.monthPos)}`} />
+          <div className="grid grid-cols-3 gap-3">
             <Stat
-              label="Kasadaki nakit"
-              value={money(data.cashBalance)}
-              tone={data.cashBalance < 0 ? 'bad' : 'good'}
+              label="Yarın atanan"
+              value={`${assigned.length}/${data.stands.length}`}
+              sub="stand"
+              tone={assigned.length < data.stands.length ? 'warn' : 'good'}
             />
+            <Stat label="Bu hafta vardiya" value={data.weekShifts} />
             <Stat label="Aktif stand" value={data.stands.length} />
           </div>
 
@@ -131,47 +114,24 @@ export default function Dashboard() {
             )}
           </Card>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card
-              title="Bugün ciro girilmeyen standlar"
-              action={
-                <Link to="/kasa" className="text-xs font-medium text-brand-700 hover:underline">
-                  Gir →
-                </Link>
-              }
-            >
-              {data.missingRevenueStandIds.length === 0 ? (
-                <p className="text-sm text-emerald-700">Tüm standların cirosu girilmiş ✓</p>
-              ) : (
-                <ul className="space-y-1 text-sm text-stone-700">
-                  {data.missingRevenueStandIds.map((id) => (
-                    <li key={id}>• {data.stands.find((s) => s.id === id)?.name}</li>
-                  ))}
-                </ul>
-              )}
-            </Card>
-
-            <Card
-              title="Bugün sayım yapılmayan standlar"
-              action={
-                <Link to="/stok" className="text-xs font-medium text-brand-700 hover:underline">
-                  Say →
-                </Link>
-              }
-            >
-              {data.stands.every((s) => data.countedStandIds.has(s.id)) && data.stands.length > 0 ? (
-                <p className="text-sm text-emerald-700">Tüm standlar sayıldı ✓</p>
-              ) : (
-                <ul className="space-y-1 text-sm text-stone-700">
-                  {data.stands
-                    .filter((s) => !data.countedStandIds.has(s.id))
-                    .map((s) => (
-                      <li key={s.id}>• {s.name}</li>
-                    ))}
-                </ul>
-              )}
-            </Card>
-          </div>
+          <Card
+            title="Bugün satış girilmeyen standlar"
+            action={
+              <Link to="/stok" className="text-xs font-medium text-brand-700 hover:underline">
+                Gir →
+              </Link>
+            }
+          >
+            {data.stands.length > 0 && missingSales.length === 0 ? (
+              <p className="text-sm text-emerald-700">Tüm standların satışı girilmiş ✓</p>
+            ) : (
+              <ul className="space-y-1 text-sm text-stone-700">
+                {missingSales.map((s) => (
+                  <li key={s.id}>• {s.name}</li>
+                ))}
+              </ul>
+            )}
+          </Card>
         </>
       )}
     </>

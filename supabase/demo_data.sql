@@ -220,14 +220,6 @@ begin
       v_real   := round(v_day_total * v_factor, 2);
       v_cash   := round(v_real * 0.6, 2);
 
-      -- 5 gün önce Kızılay standında kasaya 450 TL eksik teslim edilmiş
-      if v_offset = 5 and v_ix = 1 then
-        v_cash := greatest(v_cash - 450, 0);
-      end if;
-
-      insert into public.daily_revenues (business_date, stand_id, cash_amount, pos_amount)
-      values (v_day, stand_ids[v_ix], v_cash, v_real - v_cash);
-
       -- Haftada bir fiziki sayım. Bir keresinde kasıtlı olarak eksik çıkar.
       if v_offset % 7 = 0 then
         insert into public.stock_counts (count_date, stand_id, note)
@@ -254,29 +246,6 @@ begin
           and d.stand_id = stand_ids[v_ix];
       end if;
     end loop;
-  end loop;
-
-  -- ---- Üç günde bir bankaya yatırma ---------------------------------
-  v_last_bank := current_date - 21;
-  for v_offset in reverse 18..2 loop
-    if v_offset % 3 = 0 then
-      v_day := current_date - v_offset;
-
-      select coalesce(sum(cash_amount), 0) into v_amount
-      from public.daily_revenues
-      where stand_id = any(stand_ids)
-        and business_date > v_last_bank
-        and business_date <= v_day;
-
-      if v_amount > 0 then
-        insert into public.cash_movements
-          (movement_date, stand_id, type, amount, person_name, note)
-        values (v_day, null, 'bankaya', round(v_amount * 0.85, 2), 'Hasan',
-                '[demo] Bankaya yatırma');
-      end if;
-
-      v_last_bank := v_day;
-    end if;
   end loop;
 
   -- ---- Vardiya: son 7 gün, bugün ve yarın ---------------------------
@@ -332,38 +301,5 @@ begin
     and start_time = time '08:00';
 end;
 $$;
-
--- ---------------------------------------------------------------------
--- Para çekme ve giderler
--- ---------------------------------------------------------------------
-insert into public.cash_movements (movement_date, stand_id, type, amount, person_name, category, note) values
-  (current_date - 18, null, 'cekim', 3000, 'Hasan',   null,            '[demo] Kişisel'),
-  (current_date - 16, null, 'gider', 1850, 'Hasan',   'bardak/karton', '[demo] Toptancıdan bardak'),
-  (current_date - 12, null, 'cekim', 2500, 'Ortağım', null,            '[demo] Kişisel'),
-  (current_date - 11, null, 'gider',  900, 'Hasan',   'yakıt',         '[demo] Servis aracı'),
-  (current_date -  9, null, 'gider', 9000, 'Hasan',   'kira',          '[demo] Depo kirası'),
-  (current_date -  6, null, 'cekim', 2000, 'Hasan',   null,            '[demo] Kişisel'),
-  (current_date -  5, null, 'gider', 1200, 'Ortağım', 'bakım',         '[demo] Değirmen bakımı'),
-  (current_date -  3, null, 'cekim', 2500, 'Ortağım', null,            '[demo] Kişisel'),
-  (current_date -  1, null, 'gider', 1400, 'Hasan',   'bardak/karton', '[demo] Karton bardak');
-
--- ---------------------------------------------------------------------
--- Kasa sayımları — beklenen tutar o güne kadarki bakiyeden hesaplanır
--- ---------------------------------------------------------------------
-insert into public.cash_counts (count_date, stand_id, counted_amount, expected_amount, note)
-values (
-  current_date - 12, null,
-  public.cash_balance_until(current_date - 12),
-  public.cash_balance_until(current_date - 12),
-  '[demo] Kasa tam tuttu'
-);
-
-insert into public.cash_counts (count_date, stand_id, counted_amount, expected_amount, note)
-values (
-  current_date - 4, null,
-  greatest(public.cash_balance_until(current_date - 4) - 450, 0),
-  public.cash_balance_until(current_date - 4),
-  '[demo] Sayımda açık çıktı'
-);
 
 commit;

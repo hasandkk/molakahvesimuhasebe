@@ -31,3 +31,189 @@ input[type='number']::-webkit-inner-spin-button {
 input[type='number'] {
   -moz-appearance: textfield;
 }
+
+/* ------------------------------------------------------------------------
+   Yazdırma / PDF
+   Rapor çıktısı ekrandaki mobil kartlardan değil, #print-root'a basılan
+   tablolardan üretilir (bkz. src/components/print.tsx). Ekranda gizlidir,
+   yazdırırken #root'un yerini alır — böylece menü, düğme, filtre çıktıya
+   karışmaz ve A4'e oturan düz bir belge kalır.
+   ------------------------------------------------------------------------ */
+#print-root {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm 12mm;
+  }
+
+  html,
+  body {
+    background: #fff;
+  }
+
+  #root {
+    display: none !important;
+  }
+
+  #print-root {
+    display: block;
+  }
+}
+
+.print-doc {
+  color: #1c1917;
+  font-size: 9.5pt;
+  line-height: 1.35;
+}
+
+.print-doc h1 {
+  margin: 0;
+  font-size: 15pt;
+  font-weight: 700;
+}
+
+.print-doc h2 {
+  margin: 14px 0 4px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid #a8a29e;
+  font-size: 10.5pt;
+  font-weight: 700;
+  /* Bölüm başlığı sayfanın dibinde yalnız kalmasın */
+  break-after: avoid;
+}
+
+.print-doc h3 {
+  margin: 9px 0 2px;
+  font-size: 9.5pt;
+  font-weight: 700;
+  break-after: avoid;
+}
+
+.print-doc p {
+  margin: 0;
+}
+
+.print-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid #57392c;
+}
+
+.print-head .print-sub {
+  margin-top: 2px;
+  font-size: 10pt;
+  color: #44403c;
+}
+
+.print-head .print-meta {
+  font-size: 8pt;
+  color: #57534e;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.print-doc table {
+  width: 100%;
+  margin-top: 4px;
+  border-collapse: collapse;
+}
+
+.print-doc th,
+.print-doc td {
+  padding: 3px 4px;
+  border-bottom: 1px solid #e7e5e4;
+  text-align: left;
+  vertical-align: top;
+}
+
+.print-doc thead th {
+  border-bottom: 1px solid #78716c;
+  font-size: 8pt;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #44403c;
+}
+
+/* Uzun tablolar sayfa değiştirince başlık satırı tekrarlansın */
+.print-doc thead {
+  display: table-header-group;
+}
+
+.print-doc tr {
+  break-inside: avoid;
+}
+
+.print-doc .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.print-doc .muted {
+  color: #57534e;
+}
+
+.print-doc .total-row td {
+  border-top: 1.5px solid #78716c;
+  border-bottom: none;
+  font-weight: 700;
+}
+
+/* Gün / stand ayracı satırı */
+.print-doc .group-row td {
+  padding-top: 6px;
+  background: #f5f5f4;
+  font-weight: 700;
+  border-bottom: 1px solid #d6d3d1;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* İmza sütunu — haftalık ödeme listesi elden imzalatılıyor */
+.print-doc .sign-row td {
+  height: 8mm;
+}
+
+.print-doc .sign-col {
+  width: 28mm;
+}
+
+/* Rapor künyesi — üstteki tek satırlık rakamlar */
+.print-doc .print-facts td {
+  padding-top: 7px;
+  border-bottom: none;
+}
+
+.print-doc .fact-label {
+  display: block;
+  font-size: 8pt;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #57534e;
+}
+
+.print-doc .fact-value {
+  display: block;
+  font-size: 11pt;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.print-doc .note {
+  margin-top: 5px;
+  font-size: 8pt;
+  color: #57534e;
+}
+
+.print-doc .empty {
+  margin-top: 4px;
+  font-size: 9pt;
+  font-style: italic;
+  color: #57534e;
+}

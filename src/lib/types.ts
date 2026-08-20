@@ -73,40 +73,6 @@ export const SHIFT_PRESETS = [
   { id: 'aksam', label: 'Akşam', start: '15:30', end: '23:00' },
 ] as const
 
-export type DailyRevenue = {
-  id: string
-  business_date: string
-  stand_id: string
-  cash_amount: number
-  pos_amount: number
-  note: string | null
-}
-
-export type CashMovementType = 'cekim' | 'gider' | 'giris' | 'bankaya'
-
-export type CashMovement = {
-  id: string
-  movement_date: string
-  stand_id: string | null
-  type: CashMovementType
-  amount: number
-  person_name: string | null
-  category: string | null
-  note: string | null
-  signed_amount: number
-  created_at: string
-}
-
-export type CashCount = {
-  id: string
-  count_date: string
-  stand_id: string | null
-  counted_amount: number
-  expected_amount: number | null
-  note: string | null
-  created_at: string
-}
-
 export type StockCount = {
   id: string
   count_date: string
@@ -207,9 +173,3 @@ export type EmployeeBonus = {
   note: string | null
 }
 
-export const MOVEMENT_LABELS: Record<CashMovementType, string> = {
-  cekim: 'Para çekme',
-  gider: 'Gider',
-  giris: 'Kasaya giriş',
-  bankaya: 'Bankaya yatırma',
-}

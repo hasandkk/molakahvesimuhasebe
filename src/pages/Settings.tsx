@@ -595,8 +595,8 @@ function ProductsPanel() {
           }
         >
           <p className="mb-3 text-xs text-stone-500">
-            Fiyat bilgi amaçlıdır; kampanya ve çoklu satış olduğu için hiçbir ciro hesabında
-            kullanılmaz. Ciro “Kasa” ekranından elle girilir.
+            Fiyat bilgi amaçlıdır; kampanya ve çoklu satış olduğu için hiçbir yerde hesaba
+            katılmaz.
           </p>
           <ul className="space-y-2">
             {product.product_variants.map((variant) => (

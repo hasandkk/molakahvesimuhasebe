@@ -9,7 +9,6 @@ import Login from './pages/Login'
 // kodu iniyor, diğerleri o sekmeye geçildiğinde yükleniyor.
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Shifts = lazy(() => import('./pages/Shifts'))
-const Cash = lazy(() => import('./pages/Cash'))
 const Stock = lazy(() => import('./pages/Stock'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Settings = lazy(() => import('./pages/Settings'))
@@ -44,7 +43,6 @@ export default function App() {
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />
         <Route path="vardiya" element={<Shifts />} />
-        <Route path="kasa" element={<Cash />} />
         <Route path="stok" element={<Stock />} />
         <Route path="raporlar" element={<Reports />} />
         <Route path="tanimlar" element={<Settings />} />
