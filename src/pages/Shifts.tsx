@@ -12,12 +12,19 @@ import {
   tomorrow,
   weekDays,
 } from '../lib/date'
+import { errorMessage } from '../lib/errors'
 import { overlaps, rangeOf, type Range } from '../lib/shifts'
+import {
+  buildShiftMessage,
+  groupByStand,
+  groupLabel,
+  hhmm,
+  type ShiftGroup as Group,
+} from '../lib/shiftMessage'
 import {
   SHIFT_PRESETS,
   type Employee,
   type ShiftAssignment,
-  type ShiftKind,
   type Stand,
 } from '../lib/types'
 import {
@@ -37,18 +44,6 @@ type View = 'gun' | 'hafta'
 type Data = { stands: Stand[]; employees: Employee[]; assignments: ShiftAssignment[] }
 type PresetId = (typeof SHIFT_PRESETS)[number]['id'] | 'ozel' | 'egitim'
 type Times = { start: string; end: string }
-
-/** Aynı stand içinde aynı tür ve saatte olanlar tek grupta toplanır. */
-type Group = { id: string; kind: ShiftKind; start: string; end: string; items: ShiftAssignment[] }
-
-/** Postgres "08:00:00" -> "08:00"; eğitim kayıtlarında saat boş olabilir. */
-const hhmm = (time: string | null) => (time ? time.slice(0, 5) : '')
-
-function groupLabel(g: Group) {
-  const range = g.start && g.end ? `${g.start}–${g.end}` : null
-  if (g.kind === 'egitim') return range ? `Eğitim · ${range}` : 'Eğitim'
-  return range ?? 'Saat girilmemiş'
-}
 
 /** Haftanın tamamı tek seferde çekilir; gün değiştirmek ağ beklemez. */
 async function load(weekStart: string): Promise<Data> {
@@ -132,26 +127,7 @@ export default function Shifts() {
   )
 
   const buildGroups = useMemo(
-    () => (list: ShiftAssignment[]) => {
-      const map = new Map<string, Group[]>()
-      for (const a of list) {
-        const t = timesOf(a)
-        const key = `${a.kind}|${t.start}|${t.end}`
-        const groups = map.get(a.stand_id) ?? []
-        const found = groups.find((g) => g.id === key)
-        if (found) found.items.push(a)
-        else groups.push({ id: key, kind: a.kind, start: t.start, end: t.end, items: [a] })
-        map.set(a.stand_id, groups)
-      }
-      for (const groups of map.values()) {
-        groups.sort((a, b) => {
-          const byKind = (a.kind === 'egitim' ? 1 : 0) - (b.kind === 'egitim' ? 1 : 0)
-          return byKind !== 0 ? byKind : a.start.localeCompare(b.start)
-        })
-        for (const g of groups) g.items.sort((x, y) => nameOf(x).localeCompare(nameOf(y), 'tr'))
-      }
-      return map
-    },
+    () => (list: ShiftAssignment[]) => groupByStand(list, nameOf, timesOf),
     [nameOf, timesOf],
   )
 
@@ -220,15 +196,7 @@ export default function Shifts() {
     () => (standId: string | null) => {
       if (!data) return ''
       const stands = standId ? data.stands.filter((s) => s.id === standId) : data.stands
-      const lines = [`📅 ${formatLong(date)} — Vardiya Planı`, '']
-      for (const stand of stands) {
-        lines.push(`☕ ${stand.name}`)
-        const groups = groupsByStand.get(stand.id) ?? []
-        if (groups.length === 0) lines.push('(kimse atanmadı)')
-        else for (const g of groups) lines.push(`${groupLabel(g)} · ${g.items.map(nameOf).join(', ')}`)
-        lines.push('')
-      }
-      return lines.join('\n').trim()
+      return buildShiftMessage(date, stands, groupsByStand, nameOf)
     },
     [data, date, groupsByStand, nameOf],
   )
@@ -241,7 +209,7 @@ export default function Shifts() {
     setBusy(true)
     setActionError(null)
     const { error } = await fn()
-    if (error) setActionError(error instanceof Error ? error.message : String(error))
+    if (error) setActionError(errorMessage(error))
     else await reload()
     setBusy(false)
   }
@@ -284,7 +252,7 @@ export default function Shifts() {
         'id',
         group.items.map((a) => a.id),
       )
-    if (error) setActionError(error.message)
+    if (error) setActionError(errorMessage(error))
   }
 
   async function copyPreviousDay() {
@@ -297,7 +265,7 @@ export default function Shifts() {
       .eq('work_date', prev)
 
     if (readError) {
-      setActionError(readError.message)
+      setActionError(errorMessage(readError))
       setBusy(false)
       return
     }
@@ -312,7 +280,7 @@ export default function Shifts() {
       { onConflict: 'work_date,stand_id,employee_id,kind,start_time', ignoreDuplicates: true },
     )
 
-    if (insertError) setActionError(insertError.message)
+    if (insertError) setActionError(errorMessage(insertError))
     else {
       setTimeEdits({})
       await reload()

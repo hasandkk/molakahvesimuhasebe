@@ -7,11 +7,16 @@ React + Vite + TypeScript + Tailwind, arka planda Supabase (Postgres + Auth).
 
 | Ekran        | İçerik |
 |--------------|--------|
-| **Özet**     | Yarınki vardiya durumu (hangi stand boş), bu haftanın vardiya sayısı, satışı girilmemiş standlar |
+| **Özet**     | Yarınki planın tamamı (hangi standda kim, hangi saatte) ve **gruba atılacak mesajı tek dokunuşla kopyalama** · atama yapılmamış stand uyarısı · satışı girilmemiş standlar |
 | **Vardiya**  | **Gün** görünümünde plan yapılır, **Hafta** görünümünde tüm hafta tek ekranda görülür. Standart vardiyalar 08:00–15:30 ve 15:30–23:00; saatler değiştirilebilir. Aynı vardiyada birden fazla kişi çalışabilir, eğitime gelenler ayrı tür olarak yazılır. Saat çakışması uyarı verir. Mesaj stand bazlı veya toplu kopyalanır |
+| **Maaş**     | Haftalık ödeme listesi (pazartesi ödemesi), prim girişi, ücret kademeleri. PDF olarak imza sütunlu ödeme listesi çıkarır |
 | **Stok**     | **Günlük satış** girişi (asıl günlük iş) · **Sayım** ile ara sıra fiziki kontrol ve fire/kayıp tespiti · depodan standa **transfer** |
-| **Raporlar** | Dört sekme: **Özet** (stand ve çalışan başına vardiya sayıları) · **Vardiya geçmişi** (gün gün kim hangi standda, hangi saatte; çalışana göre süzülebilir) · **Satış geçmişi** (hangi gün hangi standda ne satıldı + sayım farkları) · **Maaş** (kademeli yevmiye + prim hesabı). Her sekme **PDF olarak yazdırılabilir** |
+| **Raporlar** | Üç sekme: **Özet** (stand ve çalışan başına vardiya sayıları) · **Vardiya geçmişi** (gün gün kim hangi standda, hangi saatte; çalışana göre süzülebilir) · **Satış geçmişi** (hangi gün hangi standda ne satıldı + sayım farkları). Her sekme **PDF olarak yazdırılabilir** |
 | **Tanımlar** | Stand ve çalışan ekleme, **isim/bilgi düzenleme**, pasifleştirme; çalışan silme (geçmişi varsa uyarır) · kahve çeşidi yönetimi |
+
+Telefonda alt menüde günlük/haftalık işler var (Özet · Vardiya · Stok · Maaş ·
+Rapor); ayda bir açılan **Tanımlar** başlıktaki dişliye taşındı. Masaüstünde
+hepsi kenar menüsünde.
 
 Stand sayısı sabit değil — “Tanımlar” ekranından istediğin kadar stand ekler,
 kullanmadığını pasifleştirirsin. Tüm ekranlar aktif standları otomatik takip eder.
@@ -85,7 +90,7 @@ devamı                   -> kademe 2 ücreti (varsayılan 1.500 ₺)
 İlk gün de normal vardiya sayılır — ayrı bir ücretsiz eğitim günü yoktur.
 Yemek ücreti hesaba katılmaz.
 
-Tutarların hepsi “Raporlar → Maaş → Ücret kademeleri” ekranından değiştirilebilir.
+Tutarların hepsi “Maaş → Ücret kademeleri” ekranından değiştirilebilir.
 
 Her çalışan için **ücret modeli** seçilir (“Tanımlar → Çalışanlar”):
 
@@ -119,8 +124,8 @@ tarih aralığı için de hesaplatabilirsin.
 
 ### PDF raporları
 
-“Raporlar” ekranındaki **PDF / Yazdır** düğmesi, o an açık olan sekmenin
-raporunu A4 düzeninde çıkarır. Menü, filtre ve düğmeler çıktıya karışmaz:
+“Raporlar” ve “Maaş” ekranlarındaki **PDF / Yazdır** düğmesi, o an açık olan
+raporu A4 düzeninde çıkarır. Menü, filtre ve düğmeler çıktıya karışmaz:
 ekrandaki mobil kartlar yerine yazdırmaya özel tablolar basılır.
 
 Çıktı tarayıcının yazdırma penceresinden üretilir — hedef olarak
@@ -129,7 +134,7 @@ ekrandaki mobil kartlar yerine yazdırmaya özel tablolar basılır.
 Bu yol seçildiği için Türkçe karakterler sorunsuz çıkar ve uygulamaya ek
 bir PDF kütüphanesi yüklenmez.
 
-Maaş sekmesinin çıktısı bir **ödeme listesidir**: çalışan başına gün sayısı,
+Maaş ekranının çıktısı bir **ödeme listesidir**: çalışan başına gün sayısı,
 yevmiye, prim, ödenecek tutar ve elden imzalatmak için bir **imza sütunu**
 içerir. Teknik tarafı `src/components/print.tsx` ve `src/index.css`
 içindeki `@media print` bloğunda.
@@ -206,7 +211,7 @@ Skill'leri güncellemek için: `npx skills add supabase/agent-skills`
 ## Günlük kullanım akışı
 
 1. **Akşam** — Stok ekranında her stand için o günün satışını gir.
-2. **Akşam** — Vardiya ekranında vardiyayı (sabah/akşam/özel saat) seçip yarının planını yap, “Metni kopyala” ile gruba at.
+2. **Akşam** — Vardiya ekranında yarının planını yap (“Dünkünü kopyala” çoğu günü tek dokunuşla halleder), sonra Özet ekranından “Gruba atılacak mesajı kopyala”.
 3. **Ara ara** — Stok → Sayım ile fiziki stoğu say, fire/kayıp var mı bak.
 4. **Pazartesi** — Raporlar → Maaş’ta haftanın ödeme listesini çıkar, istersen PDF olarak yazdır.
 

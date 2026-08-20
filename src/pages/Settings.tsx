@@ -1,10 +1,22 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { errorMessage } from '../lib/errors'
 import { useQuery } from '../lib/useQuery'
 import { invalidateRefData } from '../lib/refData'
 import { money, parseNumber } from '../lib/format'
 import { WAGE_MODE_LABELS, type Employee, type Product, type ProductVariant, type Stand, type WageMode } from '../lib/types'
-import { Button, Card, Empty, ErrorBox, Field, Input, Select, Spinner, Tabs } from '../components/ui'
+import {
+  Button,
+  Card,
+  CollapsibleCard,
+  Empty,
+  ErrorBox,
+  Field,
+  Input,
+  Select,
+  Spinner,
+  Tabs,
+} from '../components/ui'
 
 type Tab = 'standlar' | 'calisanlar' | 'urunler'
 
@@ -58,7 +70,7 @@ function StandsPanel() {
     setBusy(true)
     setActionError(null)
     const { error } = await fn()
-    if (error) setActionError(error.message)
+    if (error) setActionError(errorMessage(error))
     else {
       invalidateRefData()
       reload()
@@ -106,7 +118,7 @@ function StandsPanel() {
 
   return (
     <>
-      <Card title="Yeni stand">
+      <CollapsibleCard title="Yeni stand" openLabel="ekle">
         {actionError && <div className="mb-3"><ErrorBox message={actionError} /></div>}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Stand adı">
@@ -119,7 +131,7 @@ function StandsPanel() {
         <Button className="mt-3" onClick={() => void add()} disabled={busy}>
           Stand ekle
         </Button>
-      </Card>
+      </CollapsibleCard>
 
       <Card title="Standlar">
         {error && <ErrorBox message={error} />}
@@ -175,7 +187,7 @@ function StandsPanel() {
           ))}
         </ul>
         <p className="mt-3 text-xs text-stone-500">
-          Stand silme yoktur: silinseydi o standın tüm ciro, satış ve sayım geçmişi de silinirdi.
+          Stand silme yoktur: silinseydi o standın tüm satış, sayım ve vardiya geçmişi de silinirdi.
           Kullanmadığın standı <strong>pasifleştir</strong> — ekranlarda görünmez ama geçmişi durur.
         </p>
       </Card>
@@ -207,7 +219,7 @@ function EmployeesPanel() {
     setBusy(true)
     setActionError(null)
     const { error } = await fn()
-    if (error) setActionError(error.message)
+    if (error) setActionError(errorMessage(error))
     else {
       invalidateRefData()
       reload()
@@ -289,7 +301,7 @@ function EmployeesPanel() {
         .eq('employee_id', employee.id),
     ])
     if (shifts.error || bonuses.error) {
-      setActionError((shifts.error ?? bonuses.error)!.message)
+      setActionError(errorMessage(shifts.error ?? bonuses.error))
       setBusy(false)
       return
     }
@@ -310,7 +322,7 @@ function EmployeesPanel() {
 
   return (
     <>
-      <Card title="Yeni çalışan">
+      <CollapsibleCard title="Yeni çalışan" openLabel="ekle">
         {actionError && <div className="mb-3"><ErrorBox message={actionError} /></div>}
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Ad soyad">
@@ -339,7 +351,7 @@ function EmployeesPanel() {
         <Button className="mt-3" onClick={() => void add()} disabled={busy}>
           Çalışan ekle
         </Button>
-      </Card>
+      </CollapsibleCard>
 
       <Card title="Çalışanlar">
         {error && <ErrorBox message={error} />}
@@ -513,7 +525,7 @@ function ProductsPanel() {
       .single()
 
     if (productError || !product) {
-      setActionError(productError?.message ?? 'Ürün eklenemedi.')
+      setActionError(productError ? errorMessage(productError) : 'Ürün eklenemedi.')
       setBusy(false)
       return
     }
@@ -522,7 +534,7 @@ function ProductsPanel() {
       .from('product_variants')
       .insert(DEFAULT_VARIANTS.map((v) => ({ ...v, product_id: product.id as string })))
 
-    if (variantError) setActionError(variantError.message)
+    if (variantError) setActionError(errorMessage(variantError))
     else {
       setName('')
       invalidateRefData()
@@ -540,7 +552,7 @@ function ProductsPanel() {
       .from('product_variants')
       .update({ price: raw.trim() === '' ? null : parseNumber(raw) })
       .eq('id', variant.id)
-    if (error) setActionError(error.message)
+    if (error) setActionError(errorMessage(error))
     else {
       setSavedId(variant.id)
       setTimeout(() => setSavedId(null), 1500)
@@ -556,7 +568,7 @@ function ProductsPanel() {
       .from('products')
       .update({ is_active: !product.is_active })
       .eq('id', product.id)
-    if (error) setActionError(error.message)
+    if (error) setActionError(errorMessage(error))
     else {
       invalidateRefData()
       reload()

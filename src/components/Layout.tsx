@@ -11,6 +11,7 @@ function usePrefetchPages() {
     const prefetch = () => {
       void import('../pages/Shifts')
       void import('../pages/Stock')
+      void import('../pages/Payroll')
       void import('../pages/Reports')
       void import('../pages/Settings')
     }
@@ -39,13 +40,20 @@ function PageSkeleton() {
   )
 }
 
+/**
+ * Alt menüde günlük/haftalık işler var. Tanımlar (stand, çalışan, ürün
+ * ekleme) ayda bir açılıyor; alt menüde yer kaplamasın diye mobilde
+ * başlıktaki dişliye taşındı, masaüstü kenar menüsünde duruyor.
+ */
 const NAV = [
   { to: '/', label: 'Özet', icon: '🏠', end: true },
   { to: '/vardiya', label: 'Vardiya', icon: '📋' },
   { to: '/stok', label: 'Stok', icon: '📦' },
+  { to: '/maas', label: 'Maaş', icon: '💰' },
   { to: '/raporlar', label: 'Rapor', icon: '📊' },
-  { to: '/tanimlar', label: 'Tanım', icon: '⚙️' },
 ]
+
+const SETTINGS_NAV = { to: '/tanimlar', label: 'Tanımlar', icon: '⚙️', end: false }
 
 export default function Layout() {
   const { displayName, signOut } = useAuth()
@@ -60,7 +68,7 @@ export default function Layout() {
           <div className="text-xs text-stone-500">Stand yönetimi</div>
         </div>
         <nav className="flex-1 space-y-1 px-2">
-          {NAV.map((item) => (
+          {[...NAV, SETTINGS_NAV].map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -91,12 +99,25 @@ export default function Layout() {
         {/* Mobil başlık — kaydırırken üstte kalır */}
         <header className="sticky top-0 z-20 flex items-center justify-between border-b border-stone-200 bg-white/95 px-4 py-3 backdrop-blur md:hidden">
           <span className="text-sm font-semibold text-brand-800">☕ Mola Kahvesi</span>
-          <button
-            onClick={() => void signOut()}
-            className="-mr-2 rounded-lg px-2 py-1 text-xs text-stone-500 active:bg-stone-100"
-          >
-            Çıkış
-          </button>
+          <span className="-mr-2 flex items-center gap-1">
+            <NavLink
+              to={SETTINGS_NAV.to}
+              aria-label="Tanımlar"
+              className={({ isActive }) =>
+                `grid h-9 w-9 place-items-center rounded-lg text-base active:bg-stone-100 ${
+                  isActive ? 'bg-brand-100' : ''
+                }`
+              }
+            >
+              <span aria-hidden>{SETTINGS_NAV.icon}</span>
+            </NavLink>
+            <button
+              onClick={() => void signOut()}
+              className="rounded-lg px-2 py-1 text-xs text-stone-500 active:bg-stone-100"
+            >
+              Çıkış
+            </button>
+          </span>
         </header>
 
         <main className="flex-1 px-4 py-4 pb-[calc(5rem+env(safe-area-inset-bottom))] md:px-6 md:py-6 md:pb-6">

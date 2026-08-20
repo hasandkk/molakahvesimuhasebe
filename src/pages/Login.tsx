@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabase'
+import { errorMessage } from '../lib/errors'
 import { Button, ErrorBox, Field, Input } from '../components/ui'
 
 export default function Login() {
@@ -13,7 +14,7 @@ export default function Login() {
     setBusy(true)
     setError(null)
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
-    if (error) setError('Giriş yapılamadı: ' + error.message)
+    if (error) setError('Giriş yapılamadı: ' + errorMessage(error))
     setBusy(false)
   }
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { errorMessage } from './errors'
 
 type State<T> = {
   data: T | null
@@ -24,7 +25,7 @@ export function useQuery<T>(fetcher: () => Promise<T>, deps: unknown[]) {
       if (id === runId.current) setState({ data, loading: false, error: null })
     } catch (err) {
       if (id === runId.current) {
-        setState({ data: null, loading: false, error: err instanceof Error ? err.message : String(err) })
+        setState({ data: null, loading: false, error: errorMessage(err) })
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

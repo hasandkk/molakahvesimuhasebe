@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { errorMessage } from '../lib/errors'
 import { useQuery } from '../lib/useQuery'
 import { fetchActiveStands } from '../lib/refData'
 import { formatLong, formatShort, today } from '../lib/date'
@@ -183,7 +184,7 @@ function SalesTab({
       .single()
 
     if (saleError || !sale) {
-      setError(saleError?.message ?? 'Satış kaydedilemedi.')
+      setError(saleError ? errorMessage(saleError) : 'Satış kaydedilemedi.')
       setBusy(false)
       return
     }
@@ -199,7 +200,7 @@ function SalesTab({
       .from('stock_sale_items')
       .upsert(items, { onConflict: 'sale_id,variant_id' })
 
-    if (itemsError) setError(itemsError.message)
+    if (itemsError) setError(errorMessage(itemsError))
     else {
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
@@ -356,7 +357,7 @@ function CountTab({
       .single()
 
     if (countError || !countRow) {
-      setError(countError?.message ?? 'Sayım kaydedilemedi.')
+      setError(countError ? errorMessage(countError) : 'Sayım kaydedilemedi.')
       setBusy(false)
       return
     }
@@ -371,7 +372,7 @@ function CountTab({
       .from('stock_count_items')
       .upsert(items, { onConflict: 'count_id,variant_id' })
 
-    if (itemsError) setError(itemsError.message)
+    if (itemsError) setError(errorMessage(itemsError))
     else {
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
@@ -547,7 +548,7 @@ function TransferTab({
       .single()
 
     if (transferError || !transfer) {
-      setError(transferError?.message ?? 'Transfer kaydedilemedi.')
+      setError(transferError ? errorMessage(transferError) : 'Transfer kaydedilemedi.')
       setBusy(false)
       return
     }
@@ -560,7 +561,7 @@ function TransferTab({
       })),
     )
 
-    if (itemsError) setError(itemsError.message)
+    if (itemsError) setError(errorMessage(itemsError))
     else {
       setValues({})
       setNote('')
@@ -572,7 +573,7 @@ function TransferTab({
   async function remove(id: string) {
     setBusy(true)
     const { error } = await supabase.from('stock_transfers').delete().eq('id', id)
-    if (error) setError(error.message)
+    if (error) setError(errorMessage(error))
     else onSaved()
     setBusy(false)
   }

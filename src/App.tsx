@@ -10,6 +10,7 @@ import Login from './pages/Login'
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Shifts = lazy(() => import('./pages/Shifts'))
 const Stock = lazy(() => import('./pages/Stock'))
+const Payroll = lazy(() => import('./pages/Payroll'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Settings = lazy(() => import('./pages/Settings'))
 
@@ -44,6 +45,7 @@ export default function App() {
         <Route index element={<Dashboard />} />
         <Route path="vardiya" element={<Shifts />} />
         <Route path="stok" element={<Stock />} />
+        <Route path="maas" element={<Payroll />} />
         <Route path="raporlar" element={<Reports />} />
         <Route path="tanimlar" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react'
 
 export function Card({
@@ -5,11 +6,13 @@ export function Card({
   action,
   children,
   className = '',
+  bodyClassName = 'p-4',
 }: {
   title?: ReactNode
   action?: ReactNode
   children: ReactNode
   className?: string
+  bodyClassName?: string
 }) {
   return (
     <section className={`rounded-2xl border border-stone-200 bg-white shadow-sm ${className}`}>
@@ -19,8 +22,47 @@ export function Card({
           {action}
         </header>
       )}
-      <div className="p-4">{children}</div>
+      <div className={bodyClassName}>{children}</div>
     </section>
+  )
+}
+
+/**
+ * Kapalı başlayan kart. Formlar (yeni stand, prim ekleme…) telefonda asıl
+ * listeyi ekranın dibine itiyordu; artık liste üstte kalıyor, form
+ * dokununca açılıyor. `summary` kapalıyken görünen tek satırlık özet.
+ */
+export function CollapsibleCard({
+  title,
+  summary,
+  openLabel = 'aç',
+  children,
+  defaultOpen = false,
+}: {
+  title: ReactNode
+  summary?: ReactNode
+  openLabel?: string
+  children: ReactNode
+  defaultOpen?: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  const empty = !open && !summary
+  return (
+    <Card
+      title={title}
+      bodyClassName={empty ? '' : 'p-4'}
+      action={
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="text-xs font-medium text-brand-700"
+          aria-expanded={open}
+        >
+          {open ? 'gizle ▴' : `${openLabel} ▾`}
+        </button>
+      }
+    >
+      {open ? children : summary ? <div className="text-sm text-stone-600">{summary}</div> : null}
+    </Card>
   )
 }
 
