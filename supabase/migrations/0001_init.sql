@@ -315,7 +315,9 @@ $$;
 --   bir ortak eklemek gerekirse aşağıdaki check listesine adını yaz ve
 --   betiği tekrar çalıştır (drop constraint + add constraint kendini
 --   yeniliyor, veri kaybı olmaz).
---   category boş bırakılabilir; ay sonu kalem dökümü için doldurulur.
+--   category kolonu ARTIK KULLANILMIYOR: harcama girerken sadece serbest
+--   metin açıklama yazılıyor. Kolon, önceki sürümde girilmiş kayıtlar
+--   silinmesin diye tabloda bırakıldı; uygulama hiç yazmıyor, hiç okumuyor.
 -- ---------------------------------------------------------------------
 create table if not exists public.expenses (
   id            uuid primary key default gen_random_uuid(),

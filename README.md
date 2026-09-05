@@ -9,7 +9,7 @@ React + Vite + TypeScript + Tailwind, arka planda Supabase (Postgres + Auth).
 |--------------|--------|
 | **Özet**     | Yarınki planın tamamı (hangi standda kim, hangi saatte) ve **gruba atılacak mesajı tek dokunuşla kopyalama** · atama yapılmamış stand uyarısı · satışı girilmemiş standlar |
 | **Vardiya**  | **Gün** görünümünde plan yapılır, **Hafta** görünümünde tüm hafta tek ekranda görülür. Standart vardiyalar 08:00–15:30 ve 15:30–23:00; saatler değiştirilebilir. Aynı vardiyada birden fazla kişi çalışabilir, eğitime gelenler ayrı tür olarak yazılır. Saat çakışması uyarı verir. Mesaj stand bazlı veya toplu kopyalanır |
-| **Harcama**  | İşletme harcamaları. Girerken **Hasan** ya da **Akın** seçilir; ay sonunda kim ne kadar harcamış, aradaki fark ne, hangi kaleme ne gitmiş tek ekranda. PDF olarak da çıkar |
+| **Harcama**  | İşletme harcamaları. Girerken **Hasan** ya da **Akın** seçilir, tutar ve serbest açıklama yazılır; ay sonunda kim ne kadar harcamış tek ekranda. PDF olarak da çıkar |
 | **Maaş**     | Haftalık ödeme listesi (pazartesi ödemesi), prim girişi, ücret kademeleri. PDF olarak imza sütunlu ödeme listesi çıkarır |
 | **Stok**     | **Günlük satış** girişi (asıl günlük iş) · **Sayım** ile ara sıra fiziki kontrol ve fire/kayıp tespiti · depodan standa **transfer** |
 | **Raporlar** | Üç sekme: **Özet** (stand ve çalışan başına vardiya sayıları) · **Vardiya geçmişi** (gün gün kim hangi standda, hangi saatte; çalışana göre süzülebilir) · **Satış geçmişi** (hangi gün hangi standda ne satıldı + sayım farkları). Her sekme **PDF olarak yazdırılabilir** |
@@ -132,13 +132,15 @@ veritabanında bir check kısıtıyla sabitlenmiş — yanlış isim kaydedileme
 `src/lib/types.ts` içindeki `EXPENSE_SPENDERS` dizisine ekle; veri kaybı olmaz.
 
 Ekran ay ay çalışır, varsayılan içinde bulunulan aydır. Üstte toplam ve kişi
-başı tutarlar; altında yüzde payları ve **aradaki fark** (ay sonunda kimin
-kime ne kadar denkleştireceği) yazar.
+başı tutarlar durur.
 
-**Kalem** alanı isteğe bağlıdır — boş bırakılanlar dökümde "Diğer" altında
-toplanır. Bu, stok tarafındaki "para hesabı yok" kuralına aykırı değil: orada
-yasak olan adet × fiyattan ciro üretmekti; burada elle girilen gerçek bir
-ödeme var.
+Girişte kategori/kalem seçimi **yoktur**; tutar, tarih ve serbest bir açıklama
+yazılır. Kişi başı toplamlarda da yüzde payı ya da "kim daha çok harcadı"
+karşılaştırması gösterilmez — iki ortak arasında yarış havası yaratıyordu.
+Sadece düz tutarlar ve kayıt sayısı görünür.
+
+`expenses.category` kolonu tabloda duruyor ama artık okunmuyor da yazılmıyor
+da; önceki sürümde girilmiş kayıtlar silinmesin diye bırakıldı.
 
 ### Marka
 

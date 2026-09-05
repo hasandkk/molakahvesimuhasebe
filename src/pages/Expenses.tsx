@@ -11,7 +11,7 @@ import {
   today,
 } from '../lib/date'
 import { money, parseNumber } from '../lib/format'
-import { EXPENSE_CATEGORIES, EXPENSE_SPENDERS, type Expense, type ExpenseSpender } from '../lib/types'
+import { EXPENSE_SPENDERS, type Expense, type ExpenseSpender } from '../lib/types'
 import {
   Button,
   Card,
@@ -20,7 +20,6 @@ import {
   ErrorBox,
   Field,
   Input,
-  Select,
   Spinner,
   Stat,
 } from '../components/ui'
@@ -52,26 +51,23 @@ export default function Expenses() {
 
   const total = rows.reduce((s, r) => s + Number(r.amount), 0)
 
-  /** Kim ne kadar harcadı — asıl sorulan soru. */
+  /**
+   * Kişi başı toplam. Bilerek sadece tutar ve kayıt sayısı var — yüzde payı
+   * ya da "kim daha çok harcadı" karşılaştırması yok; bunlar iki ortak
+   * arasında yarış havası yaratıyordu.
+   */
   const bySpender = useMemo(
     () =>
       EXPENSE_SPENDERS.map((name) => {
         const list = rows.filter((r) => r.spender === name)
-        const sum = list.reduce((s, r) => s + Number(r.amount), 0)
-        return { name, sum, count: list.length, share: total > 0 ? sum / total : 0 }
+        return {
+          name,
+          sum: list.reduce((s, r) => s + Number(r.amount), 0),
+          count: list.length,
+        }
       }),
-    [rows, total],
+    [rows],
   )
-
-  /** Kalem dökümü. Boş kategoriler "Diğer" altında toplanır. */
-  const byCategory = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const r of rows) {
-      const key = r.category?.trim() || 'Diğer'
-      map.set(key, (map.get(key) ?? 0) + Number(r.amount))
-    }
-    return [...map.entries()].sort((a, b) => b[1] - a[1])
-  }, [rows])
 
   const ozetMetni = useMemo(() => {
     const lines = [`💸 ${formatMonth(month)} harcamaları`, '']
@@ -99,9 +95,16 @@ export default function Expenses() {
           <h1 className="text-lg font-semibold text-stone-900">Harcamalar</h1>
           <p className="truncate text-sm text-stone-500">{formatMonth(month)}</p>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => window.print()}>
-          PDF / Yazdır
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          {rows.length > 0 && (
+            <Button variant="secondary" size="sm" onClick={() => void copyText()}>
+              {copied ? '✓ Kopyalandı' : 'Özeti kopyala'}
+            </Button>
+          )}
+          <Button variant="secondary" size="sm" onClick={() => window.print()}>
+            PDF / Yazdır
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-2xl border border-stone-200 bg-white p-3 shadow-sm">
@@ -154,59 +157,6 @@ export default function Expenses() {
 
       <NewExpenseCard onAdded={reload} defaultDate={month === thisMonth ? today() : to} />
 
-      {rows.length > 0 && (
-        <Card
-          title="Kim ne kadar harcadı"
-          action={
-            <Button size="sm" variant="secondary" onClick={() => void copyText()}>
-              {copied ? '✓ Kopyalandı' : 'Özeti kopyala'}
-            </Button>
-          }
-        >
-          <ul className="space-y-3">
-            {bySpender.map((s) => (
-              <li key={s.name}>
-                <div className="flex items-baseline justify-between gap-3 text-sm">
-                  <span className="font-medium text-stone-800">{s.name}</span>
-                  <span className="tabular-nums font-semibold text-stone-900">{money(s.sum)}</span>
-                </div>
-                <div className="mt-1 h-2 overflow-hidden rounded-full bg-stone-200">
-                  <div
-                    className="h-full rounded-full bg-brand-700"
-                    style={{ width: `${Math.round(s.share * 100)}%` }}
-                  />
-                </div>
-                <div className="mt-0.5 text-xs text-stone-500">
-                  toplamın %{Math.round(s.share * 100)}'i · {s.count} kayıt
-                </div>
-              </li>
-            ))}
-          </ul>
-
-          {/* İki ortak arasındaki fark: ay sonunda kim kime ne kadar denkleştirecek */}
-          {bySpender.length === 2 && Math.abs(bySpender[0].sum - bySpender[1].sum) > 0 && (
-            <p className="mt-3 rounded-xl bg-stone-50 px-3 py-2 text-xs text-stone-600">
-              Aradaki fark <strong>{money(Math.abs(bySpender[0].sum - bySpender[1].sum))}</strong> —{' '}
-              {bySpender[0].sum > bySpender[1].sum ? bySpender[0].name : bySpender[1].name} daha
-              fazla harcamış.
-            </p>
-          )}
-        </Card>
-      )}
-
-      {byCategory.length > 0 && (
-        <Card title="Kalem dökümü">
-          <ul className="divide-y divide-stone-100 text-sm">
-            {byCategory.map(([name, sum]) => (
-              <li key={name} className="flex justify-between gap-3 py-2">
-                <span className="min-w-0 truncate">{name}</span>
-                <span className="shrink-0 tabular-nums font-medium">{money(sum)}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
-
       <Card title="Harcama listesi">
         {rows.length === 0 ? (
           <Empty>Bu ayda harcama kaydı yok.</Empty>
@@ -233,7 +183,6 @@ export default function Expenses() {
               <tr>
                 <th>Kişi</th>
                 <th className="num">Kayıt</th>
-                <th className="num">Pay</th>
                 <th className="num">Tutar</th>
               </tr>
             </thead>
@@ -242,40 +191,17 @@ export default function Expenses() {
                 <tr key={s.name}>
                   <td>{s.name}</td>
                   <td className="num muted">{s.count}</td>
-                  <td className="num muted">%{Math.round(s.share * 100)}</td>
                   <td className="num">{money(s.sum)}</td>
                 </tr>
               ))}
               <tr className="total-row">
                 <td>Toplam</td>
                 <td className="num">{rows.length}</td>
-                <td />
                 <td className="num">{money(total)}</td>
               </tr>
             </tbody>
           </table>
         </PrintSection>
-
-        {byCategory.length > 0 && (
-          <PrintSection title="Kalem dökümü">
-            <table>
-              <thead>
-                <tr>
-                  <th>Kalem</th>
-                  <th className="num">Tutar</th>
-                </tr>
-              </thead>
-              <tbody>
-                {byCategory.map(([name, sum]) => (
-                  <tr key={name}>
-                    <td>{name}</td>
-                    <td className="num">{money(sum)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </PrintSection>
-        )}
 
         <PrintSection title="Harcama listesi">
           {rows.length === 0 ? (
@@ -286,7 +212,6 @@ export default function Expenses() {
                 <tr>
                   <th className="num">Tarih</th>
                   <th>Kişi</th>
-                  <th>Kalem</th>
                   <th>Açıklama</th>
                   <th className="num">Tutar</th>
                 </tr>
@@ -298,7 +223,6 @@ export default function Expenses() {
                     <tr key={r.id}>
                       <td className="num">{formatShort(r.expense_date)}</td>
                       <td>{r.spender}</td>
-                      <td className="muted">{r.category || '—'}</td>
                       <td className="muted">{r.note || ''}</td>
                       <td className="num">{money(r.amount)}</td>
                     </tr>
@@ -324,7 +248,6 @@ function NewExpenseCard({
   const [date, setDate] = useState(defaultDate)
   const [spender, setSpender] = useState<ExpenseSpender>(EXPENSE_SPENDERS[0])
   const [amount, setAmount] = useState('')
-  const [category, setCategory] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -342,7 +265,6 @@ function NewExpenseCard({
       expense_date: date,
       spender,
       amount: value,
-      category: category.trim() || null,
       note: note.trim() || null,
     })
     if (error) setError(errorMessage(error))
@@ -397,21 +319,11 @@ function NewExpenseCard({
         <Field label="Tarih">
           <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
-        <Field label="Kalem" hint="İsteğe bağlı — ay sonu dökümü için">
-          <Select value={category} onChange={(e) => setCategory(e.target.value)}>
-            <option value="">Seçilmedi</option>
-            {EXPENSE_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Açıklama">
+        <Field label="Açıklama" className="sm:col-span-2">
           <Input
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="İsteğe bağlı"
+            placeholder="Ne için harcandı?"
           />
         </Field>
       </div>
@@ -442,14 +354,7 @@ function ExpenseRow({ expense, onChanged }: { expense: Expense; onChanged: () =>
     <li className="py-2.5">
       <div className="flex items-start justify-between gap-3">
         <span className="min-w-0">
-          <span className="flex flex-wrap items-center gap-1.5">
-            <span className="text-sm font-medium text-stone-800">{expense.spender}</span>
-            {expense.category && (
-              <span className="rounded-md bg-stone-100 px-1.5 py-0.5 text-[10px] font-semibold text-stone-600">
-                {expense.category}
-              </span>
-            )}
-          </span>
+          <span className="text-sm font-medium text-stone-800">{expense.spender}</span>
           <span className="block text-xs text-stone-500">
             {formatShort(expense.expense_date)}
             {expense.note ? ` · ${expense.note}` : ''}
