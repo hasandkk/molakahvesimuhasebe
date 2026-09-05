@@ -106,11 +106,14 @@ create unique index if not exists stands_name_uniq on public.stands (lower(name)
 -- employees — çalışanlar (sisteme giriş yapmazlar, sadece kayıtlıdırlar)
 -- ---------------------------------------------------------------------
 --   wage_mode = 'kademeli' -> ilk günler düşük yevmiye, sonrası tam ücret
---   wage_mode = 'tam'      -> ilk günden itibaren tam ücret.
---                             Deneyimli işe alımlar ve program kurulmadan
---                             önce çalışmaya başlamış kişiler için.
 --   wage_mode = 'odemesiz' -> hiç yevmiye yok.
 --                             Ortaklar ve ücretsiz çalışanlar için.
+--
+--   Eskiden bir de 'tam' modu vardı ("ilk günden tam ücret"): program
+--   kurulmadan önce başlamış kişiler kademe sayacında yeniden 1. güne
+--   düşmesin diye. Onların kayıtlı çalışma günü 3'ü geçtiği için kademeli
+--   mod zaten tam ücreti veriyor; mod kaldırıldı. Aşağıdaki update, eski
+--   kayıtları kısıt eklenmeden ÖNCE çeviriyor — yoksa constraint patlar.
 --   daily_wage doluysa son kademede genel tutar yerine o kullanılır.
 create table if not exists public.employees (
   id          uuid primary key default gen_random_uuid(),
@@ -118,7 +121,7 @@ create table if not exists public.employees (
   phone       text,
   daily_wage  numeric(12,2),
   wage_mode   text not null default 'kademeli'
-                check (wage_mode in ('kademeli', 'tam', 'odemesiz')),
+                check (wage_mode in ('kademeli', 'odemesiz')),
   note        text,
   is_active   boolean not null default true,
   created_at  timestamptz not null default now()
@@ -130,9 +133,13 @@ alter table public.employees
   add column if not exists wage_mode text not null default 'kademeli';
 
 alter table public.employees drop constraint if exists employees_wage_mode_check;
+
+-- 'tam' modu kaldırıldı; eski kayıtlar kademeliye çevriliyor.
+update public.employees set wage_mode = 'kademeli' where wage_mode = 'tam';
+
 alter table public.employees
   add constraint employees_wage_mode_check
-  check (wage_mode in ('kademeli', 'tam', 'odemesiz'));
+  check (wage_mode in ('kademeli', 'odemesiz'));
 
 -- ---------------------------------------------------------------------
 -- products / product_variants — kahve çeşitleri ve gramajları

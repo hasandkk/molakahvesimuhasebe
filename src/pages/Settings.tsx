@@ -331,7 +331,7 @@ function EmployeesPanel() {
           <Field label="Telefon">
             <Input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" />
           </Field>
-          <Field label="Yevmiye (₺)" hint="Boş bırakırsan genel tam ücret geçerli">
+          <Field label="Yevmiye (₺)" hint="Boş bırakırsan genel son kademe ücreti geçerli">
             <Input value={wage} onChange={(e) => setWage(e.target.value)} inputMode="decimal" />
           </Field>
         </div>
@@ -345,8 +345,9 @@ function EmployeesPanel() {
           </Select>
         </Field>
         <p className="mt-1 text-xs text-stone-500">
-          Deneyimli birini alıyorsan “ilk günden tam ücret” seç; eğitim günü ve düşük kademe
-          uygulanmaz.
+          Yeni çalışan <strong>kademeli</strong> başlar: ilk günler düşük yevmiye, sonrası tam
+          ücret. Ortaklar ve ücretsiz çalışanlar için “ödeme yok” seç — o kişiye yevmiye
+          hesaplanmaz, sadece prim yazılabilir.
         </p>
         <Button className="mt-3" onClick={() => void add()} disabled={busy}>
           Çalışan ekle

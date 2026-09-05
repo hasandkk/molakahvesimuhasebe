@@ -95,14 +95,18 @@ Tutarların hepsi “Maaş → Ücret kademeleri” ekranından değiştirilebil
 
 Her çalışan için **ücret modeli** seçilir (“Tanımlar → Çalışanlar”):
 
-- **Kademeli** — yukarıdaki sıra uygulanır. Yeni ve deneyimsiz işe alımlar için.
-- **İlk günden tam ücret** — düşük kademe atlanır, ilk günden itibaren tam ücret.
-  Deneyimli işe alımlar ve program kurulmadan önce çalışmaya başlamış kişiler için.
+- **Kademeli** — yukarıdaki sıra uygulanır. Varsayılan ve normal durum.
 - **Ödeme yok** — yevmiye 0. Ortaklar ve ücretsiz çalışanlar için.
   Kişi listede görünür ama tutarı sıfırdır; yine de prim yazılabilir.
 
+Eskiden bir de **“ilk günden tam ücret”** modu vardı: program kurulmadan önce
+çalışmaya başlamış kişiler kademe sayacında yeniden 1. güne düşmesin diye.
+Onların kayıtlı çalışma günü 3'ü geçtiği için kademeli mod zaten tam ücreti
+veriyor; mod kaldırıldı. Betik, eski `tam` kayıtlarını kısıt eklenmeden önce
+`kademeli`ye çeviriyor.
+
 Bir çalışana özel tutar vermek istersen aynı ekrandaki yevmiye alanını doldur;
-o kişi tam ücret olarak genel tutar yerine kendi ücretini alır.
+o kişi son kademede genel tutar yerine kendi ücretini alır.
 
 Güne özel **prim** yazılabilir; eksi değer kesinti anlamına gelir.
 

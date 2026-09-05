@@ -102,14 +102,12 @@ export default function Payroll() {
 
   /**
    * kademeli: ilk tier1_days gün tier1 ücreti → devamı tam ücret
-   * tam:      ilk günden itibaren tam ücret
    * odemesiz: hiç yevmiye yok
    */
   const rateFor = (dayIndex: number, employeeWage: number | null, wageMode: WageMode) => {
     if (!s) return 0
     if (wageMode === 'odemesiz') return 0
     const fullWage = employeeWage !== null ? Number(employeeWage) : Number(s.tier2_wage)
-    if (wageMode === 'tam') return fullWage
     if (dayIndex <= s.tier1_days) return Number(s.tier1_wage)
     return fullWage
   }
@@ -391,11 +389,6 @@ export default function Payroll() {
                     <span className="min-w-0">
                       <span className="flex items-center gap-1.5">
                         <span className="truncate text-sm font-medium text-stone-800">{r.name}</span>
-                        {r.wageMode === 'tam' && (
-                          <span className="shrink-0 rounded-md bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800">
-                            tam ücret
-                          </span>
-                        )}
                         {r.wageMode === 'odemesiz' && (
                           <span className="shrink-0 rounded-md bg-stone-200 px-1.5 py-0.5 text-[10px] font-semibold text-stone-600">
                             ödeme yok
@@ -530,12 +523,7 @@ export default function Payroll() {
                   <tr key={r.id} className="sign-row">
                     <td>
                       {r.name}
-                      {r.wageMode !== 'kademeli' && (
-                        <span className="muted">
-                          {' '}
-                          ({r.wageMode === 'tam' ? 'tam ücret' : 'ödeme yok'})
-                        </span>
-                      )}
+                      {r.wageMode === 'odemesiz' && <span className="muted"> (ödeme yok)</span>}
                     </td>
                     <td className="num muted">{r.days.filter((d) => d.dayIndex !== null).length}</td>
                     <td className="num">{money(r.wageTotal)}</td>

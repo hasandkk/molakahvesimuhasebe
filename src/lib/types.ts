@@ -8,16 +8,18 @@ export type Stand = {
 
 /**
  * 'kademeli' — ilk günler düşük yevmiye, sonrasında tam ücret
- * 'tam'      — ilk günden itibaren tam ücret (deneyimli işe alım ya da
- *              program kurulmadan önce başlamış kişi)
  * 'odemesiz' — hiç yevmiye yok (ortaklar, ücretsiz çalışanlar).
  *              Prim girilirse yine de hesaba katılır.
+ *
+ * Eskiden bir de 'tam' modu vardı; program kurulmadan önce başlamış
+ * kişiler kademe sayacında yeniden 1. güne düşmesin diye. Kayıtlı çalışma
+ * günleri 3'ü geçtiği için kademeli mod zaten tam ücreti veriyor, mod
+ * kaldırıldı.
  */
-export type WageMode = 'kademeli' | 'tam' | 'odemesiz'
+export type WageMode = 'kademeli' | 'odemesiz'
 
 export const WAGE_MODE_LABELS: Record<WageMode, string> = {
   kademeli: 'Kademeli (ilk günler düşük → sonra tam)',
-  tam: 'İlk günden tam ücret',
   odemesiz: 'Ödeme yok (yevmiye 0)',
 }
 
