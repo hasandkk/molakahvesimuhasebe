@@ -81,3 +81,12 @@ export function IconSettings({ className }: IconProps) {
     </svg>
   )
 }
+
+export function IconExpenses({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M6.5 3.5h11a1.5 1.5 0 0 1 1.5 1.5v15.5l-3-2-2 2-2-2-2 2-3-2V5a1.5 1.5 0 0 1 1.5-1.5z" />
+      <path d="M9 8h6M9 11.5h6" />
+    </svg>
+  )
+}

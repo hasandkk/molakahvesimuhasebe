@@ -309,6 +309,38 @@ as $$
   order by e.full_name, s.work_date;
 $$;
 
+-- ---------------------------------------------------------------------
+-- expenses — işletme harcamaları
+--   Harcamayı yapan iki ortaktan biridir. İsimler burada sabit; üçüncü
+--   bir ortak eklemek gerekirse aşağıdaki check listesine adını yaz ve
+--   betiği tekrar çalıştır (drop constraint + add constraint kendini
+--   yeniliyor, veri kaybı olmaz).
+--   category boş bırakılabilir; ay sonu kalem dökümü için doldurulur.
+-- ---------------------------------------------------------------------
+create table if not exists public.expenses (
+  id            uuid primary key default gen_random_uuid(),
+  expense_date  date not null,
+  spender       text not null,
+  amount        numeric(12,2) not null check (amount > 0),
+  category      text,
+  note          text,
+  created_by    uuid references auth.users(id) default auth.uid(),
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+
+alter table public.expenses drop constraint if exists expenses_spender_check;
+alter table public.expenses
+  add constraint expenses_spender_check check (spender in ('Hasan', 'Akın'));
+
+create index if not exists expenses_date_idx on public.expenses (expense_date);
+create index if not exists expenses_spender_idx on public.expenses (spender);
+
+drop trigger if exists expenses_updated_at on public.expenses;
+create trigger expenses_updated_at
+  before update on public.expenses
+  for each row execute function public.set_updated_at();
+
 -- =====================================================================
 -- KASA TABLOLARI — ARTIK KULLANILMIYOR
 -- Kasa modülü programdan kaldırıldı (ciro, para çekme, gider, kasa
@@ -700,7 +732,8 @@ declare
     'shift_assignments', 'daily_revenues', 'cash_movements', 'cash_counts',
     'stock_counts', 'stock_count_items', 'stock_transfers', 'stock_transfer_items',
     'payroll_settings', 'employee_bonuses',
-    'stock_sales', 'stock_sale_items'
+    'stock_sales', 'stock_sale_items',
+    'expenses'
   ];
 begin
   foreach t in array tables loop

@@ -9,13 +9,14 @@ React + Vite + TypeScript + Tailwind, arka planda Supabase (Postgres + Auth).
 |--------------|--------|
 | **Özet**     | Yarınki planın tamamı (hangi standda kim, hangi saatte) ve **gruba atılacak mesajı tek dokunuşla kopyalama** · atama yapılmamış stand uyarısı · satışı girilmemiş standlar |
 | **Vardiya**  | **Gün** görünümünde plan yapılır, **Hafta** görünümünde tüm hafta tek ekranda görülür. Standart vardiyalar 08:00–15:30 ve 15:30–23:00; saatler değiştirilebilir. Aynı vardiyada birden fazla kişi çalışabilir, eğitime gelenler ayrı tür olarak yazılır. Saat çakışması uyarı verir. Mesaj stand bazlı veya toplu kopyalanır |
+| **Harcama**  | İşletme harcamaları. Girerken **Hasan** ya da **Akın** seçilir; ay sonunda kim ne kadar harcamış, aradaki fark ne, hangi kaleme ne gitmiş tek ekranda. PDF olarak da çıkar |
 | **Maaş**     | Haftalık ödeme listesi (pazartesi ödemesi), prim girişi, ücret kademeleri. PDF olarak imza sütunlu ödeme listesi çıkarır |
 | **Stok**     | **Günlük satış** girişi (asıl günlük iş) · **Sayım** ile ara sıra fiziki kontrol ve fire/kayıp tespiti · depodan standa **transfer** |
 | **Raporlar** | Üç sekme: **Özet** (stand ve çalışan başına vardiya sayıları) · **Vardiya geçmişi** (gün gün kim hangi standda, hangi saatte; çalışana göre süzülebilir) · **Satış geçmişi** (hangi gün hangi standda ne satıldı + sayım farkları). Her sekme **PDF olarak yazdırılabilir** |
 | **Tanımlar** | Stand ve çalışan ekleme, **isim/bilgi düzenleme**, pasifleştirme; çalışan silme (geçmişi varsa uyarır) · kahve çeşidi yönetimi |
 
-Telefonda alt menüde günlük/haftalık işler var (Özet · Vardiya · Stok · Maaş ·
-Rapor); ayda bir açılan **Tanımlar** başlıktaki dişliye taşındı. Masaüstünde
+Telefonda alt menüde günlük/haftalık işler var (Özet · Vardiya · Stok · Harcama ·
+Maaş · Rapor); ayda bir açılan **Tanımlar** başlıktaki dişliye taşındı. Masaüstünde
 hepsi kenar menüsünde.
 
 Stand sayısı sabit değil — “Tanımlar” ekranından istediğin kadar stand ekler,
@@ -121,6 +122,23 @@ tarih aralığı için de hesaplatabilirsin.
 - **Kademe sayacı kişinin işe başladığı ilk günden işler**, seçilen dönemden
   değil. Yoksa her ödeme döneminde herkes yeniden “ilk gün” olurdu.
 - **Aynı gün iki vardiya çalışılsa da bir gün sayılır** — ücret günlük.
+
+### Harcama mantığı
+
+Harcamayı yapan **iki ortaktan biridir**: Hasan ya da Akın. İsimler
+veritabanında bir check kısıtıyla sabitlenmiş — yanlış isim kaydedilemez.
+Üçüncü bir ortak eklemek gerekirse `0001_init.sql` içindeki
+`expenses_spender_check` listesine adını yaz, betiği tekrar çalıştır ve
+`src/lib/types.ts` içindeki `EXPENSE_SPENDERS` dizisine ekle; veri kaybı olmaz.
+
+Ekran ay ay çalışır, varsayılan içinde bulunulan aydır. Üstte toplam ve kişi
+başı tutarlar; altında yüzde payları ve **aradaki fark** (ay sonunda kimin
+kime ne kadar denkleştireceği) yazar.
+
+**Kalem** alanı isteğe bağlıdır — boş bırakılanlar dökümde "Diğer" altında
+toplanır. Bu, stok tarafındaki "para hesabı yok" kuralına aykırı değil: orada
+yasak olan adet × fiyattan ciro üretmekti; burada elle girilen gerçek bir
+ödeme var.
 
 ### Marka
 

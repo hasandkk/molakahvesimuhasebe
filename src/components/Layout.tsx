@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { Logo } from './Logo'
 import {
+  IconExpenses,
   IconHome,
   IconPayroll,
   IconReports,
@@ -20,6 +21,7 @@ function usePrefetchPages() {
     const prefetch = () => {
       void import('../pages/Shifts')
       void import('../pages/Stock')
+      void import('../pages/Expenses')
       void import('../pages/Payroll')
       void import('../pages/Reports')
       void import('../pages/Settings')
@@ -58,6 +60,7 @@ const NAV = [
   { to: '/', label: 'Özet', Icon: IconHome, end: true },
   { to: '/vardiya', label: 'Vardiya', Icon: IconShifts, end: false },
   { to: '/stok', label: 'Stok', Icon: IconStock, end: false },
+  { to: '/harcama', label: 'Harcama', Icon: IconExpenses, end: false },
   { to: '/maas', label: 'Maaş', Icon: IconPayroll, end: false },
   { to: '/raporlar', label: 'Rapor', Icon: IconReports, end: false },
 ]
@@ -138,7 +141,7 @@ export default function Layout() {
         </main>
 
         {/* Mobil alt menü */}
-        <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-stone-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+        <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-6 border-t border-stone-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
           {NAV.map((item) => (
             <NavLink
               key={item.to}

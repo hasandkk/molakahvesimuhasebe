@@ -77,3 +77,23 @@ export function formatWeekday(iso: string): string {
 export function formatDayMonth(iso: string): string {
   return dayMonthFmt.format(toDate(iso))
 }
+
+/** Ayın son günü. */
+export function endOfMonth(iso: string): string {
+  const [y, m] = iso.split('-').map(Number)
+  // Bir sonraki ayın 0. günü = bu ayın son günü
+  return toISODate(new Date(y, m, 0))
+}
+
+/** Ay ekle/çıkar; gün her zaman ayın 1'ine sabitlenir. */
+export function addMonths(iso: string, months: number): string {
+  const [y, m] = iso.split('-').map(Number)
+  return toISODate(new Date(y, m - 1 + months, 1))
+}
+
+const monthFmt = new Intl.DateTimeFormat('tr-TR', { month: 'long', year: 'numeric' })
+
+/** "Eylül 2026" */
+export function formatMonth(iso: string): string {
+  return monthFmt.format(toDate(iso))
+}

@@ -173,3 +173,35 @@ export type EmployeeBonus = {
   note: string | null
 }
 
+
+/* ------------------------------------------------------------ Harcamalar */
+
+/** Harcamayı yapan ortak. Veritabanındaki check kısıtıyla aynı olmalı. */
+export const EXPENSE_SPENDERS = ['Hasan', 'Akın'] as const
+export type ExpenseSpender = (typeof EXPENSE_SPENDERS)[number]
+
+/**
+ * Kalem önerileri. Zorunlu değil — boş bırakılabilir; ay sonu dökümünde
+ * boş olanlar "Diğer" altında toplanır.
+ */
+export const EXPENSE_CATEGORIES = [
+  'Kira',
+  'Elektrik / Su',
+  'Malzeme',
+  'Bardak / Karton',
+  'Yakıt',
+  'Bakım / Onarım',
+  'Vergi / Resmi',
+  'Personel',
+  'Diğer',
+] as const
+
+export type Expense = {
+  id: string
+  expense_date: string
+  spender: ExpenseSpender
+  amount: number
+  category: string | null
+  note: string | null
+  created_at: string
+}
