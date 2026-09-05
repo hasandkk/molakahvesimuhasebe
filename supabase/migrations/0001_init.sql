@@ -264,6 +264,32 @@ create index if not exists employee_bonuses_date_idx on public.employee_bonuses 
 create index if not exists employee_bonuses_employee_idx on public.employee_bonuses (employee_id);
 
 -- ---------------------------------------------------------------------
+-- employee_advances — çalışana verilen ön ödeme (avans)
+--   Çalışan hafta ortasında para isteyip alıyor; pazartesi ödemesinde bu
+--   tutar hakedişten düşülüyor. Avans, tarihinin düştüğü ödeme döneminde
+--   kesilir.
+--   employee_bonuses'ın aksine (work_date, employee_id) tekil DEĞİL:
+--   aynı kişi aynı gün iki kez avans alabilir.
+-- ---------------------------------------------------------------------
+create table if not exists public.employee_advances (
+  id           uuid primary key default gen_random_uuid(),
+  paid_date    date not null,
+  employee_id  uuid not null references public.employees(id) on delete cascade,
+  amount       numeric(12,2) not null check (amount > 0),
+  note         text,
+  created_by   uuid references auth.users(id) default auth.uid(),
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+create index if not exists employee_advances_date_idx on public.employee_advances (paid_date);
+create index if not exists employee_advances_employee_idx on public.employee_advances (employee_id);
+
+drop trigger if exists employee_advances_updated_at on public.employee_advances;
+create trigger employee_advances_updated_at
+  before update on public.employee_advances
+  for each row execute function public.set_updated_at();
+
+-- ---------------------------------------------------------------------
 -- payroll(baslangic, bitis)
 --   Aralıktaki her çalışma günü için, o günün kişinin İŞE BAŞLAMASINDAN
 --   itibaren kaçıncı günü olduğunu verir. Kademe sayacı seçilen aralıktan
@@ -733,7 +759,7 @@ declare
     'stands', 'employees', 'products', 'product_variants',
     'shift_assignments', 'daily_revenues', 'cash_movements', 'cash_counts',
     'stock_counts', 'stock_count_items', 'stock_transfers', 'stock_transfer_items',
-    'payroll_settings', 'employee_bonuses',
+    'payroll_settings', 'employee_bonuses', 'employee_advances',
     'stock_sales', 'stock_sale_items',
     'expenses'
   ];

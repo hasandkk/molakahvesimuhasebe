@@ -165,6 +165,18 @@ export type PayrollSettings = {
   tier2_wage: number
 }
 
+/**
+ * Çalışana verilen ön ödeme. Tarihinin düştüğü ödeme döneminde hakedişten
+ * düşülür. Tutar her zaman pozitiftir; hesapta eksi olarak işlenir.
+ */
+export type EmployeeAdvance = {
+  id: string
+  paid_date: string
+  employee_id: string
+  amount: number
+  note: string | null
+}
+
 export type EmployeeBonus = {
   id: string
   work_date: string

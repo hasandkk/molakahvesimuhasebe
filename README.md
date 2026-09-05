@@ -10,7 +10,7 @@ React + Vite + TypeScript + Tailwind, arka planda Supabase (Postgres + Auth).
 | **Özet**     | Yarınki planın tamamı (hangi standda kim, hangi saatte) ve **gruba atılacak mesajı tek dokunuşla kopyalama** · atama yapılmamış stand uyarısı · satışı girilmemiş standlar |
 | **Vardiya**  | **Gün** görünümünde plan yapılır, **Hafta** görünümünde tüm hafta tek ekranda görülür. Standart vardiyalar 08:00–15:30 ve 15:30–23:00; saatler değiştirilebilir. Aynı vardiyada birden fazla kişi çalışabilir, eğitime gelenler ayrı tür olarak yazılır. Saat çakışması uyarı verir. Mesaj stand bazlı veya toplu kopyalanır |
 | **Harcama**  | İşletme harcamaları. Girerken **Hasan** ya da **Akın** seçilir, tutar ve serbest açıklama yazılır; ay sonunda kim ne kadar harcamış tek ekranda. PDF olarak da çıkar |
-| **Maaş**     | Haftalık ödeme listesi (pazartesi ödemesi), prim girişi, ücret kademeleri. PDF olarak imza sütunlu ödeme listesi çıkarır |
+| **Maaş**     | Haftalık ödeme listesi (pazartesi ödemesi), prim ve **ön ödeme (avans)** girişi, ücret kademeleri. PDF olarak imza sütunlu ödeme listesi çıkarır |
 | **Stok**     | **Günlük satış** girişi (asıl günlük iş) · **Sayım** ile ara sıra fiziki kontrol ve fire/kayıp tespiti · depodan standa **transfer** |
 | **Raporlar** | Üç sekme: **Özet** (stand ve çalışan başına vardiya sayıları) · **Vardiya geçmişi** (gün gün kim hangi standda, hangi saatte; çalışana göre süzülebilir) · **Satış geçmişi** (hangi gün hangi standda ne satıldı + sayım farkları). Her sekme **PDF olarak yazdırılabilir** |
 | **Tanımlar** | Stand ve çalışan ekleme, **isim/bilgi düzenleme**, pasifleştirme; çalışan silme (geçmişi varsa uyarır) · kahve çeşidi yönetimi |
@@ -105,6 +105,26 @@ Bir çalışana özel tutar vermek istersen aynı ekrandaki yevmiye alanını do
 o kişi tam ücret olarak genel tutar yerine kendi ücretini alır.
 
 Güne özel **prim** yazılabilir; eksi değer kesinti anlamına gelir.
+
+### Ön ödeme (avans)
+
+Çalışan hafta ortasında para isteyip alabiliyor. Bu tutar “Maaş → Ön ödeme
+(avans)” bölümüne yazılır ve o dönemin hakedişinden düşülür:
+
+```
+ödenecek = yevmiye + prim − avans
+```
+
+Avans **verildiği tarihin düştüğü ödeme döneminde** kesilir. Tutar her zaman
+pozitif girilir, hesapta eksi olarak işlenir. Prim'den farklı olarak aynı
+kişiye aynı gün birden fazla avans yazılabilir — üst üste yazmaz, ayrı kayıt
+olur.
+
+**Bilinen sınır:** avans o haftanın hakedişini aşarsa kişinin tutarı eksiye
+düşer ve bu fark **kendiliğinden gelecek haftaya devretmez**. Ekran bunu
+kırmızı bir uyarıyla söyler; kalan tutarı sonraki dönemde elle avans olarak
+yazman gerekir. Otomatik devir, ödemelerin “yapıldı” olarak işaretlenmesini
+gerektiriyor; program şu an ödeme durumu tutmuyor.
 
 ### Haftalık ödeme
 
