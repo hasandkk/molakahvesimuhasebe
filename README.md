@@ -108,21 +108,36 @@ veriyor; mod kaldırıldı. Betik, eski `tam` kayıtlarını kısıt eklenmeden 
 Bir çalışana özel tutar vermek istersen aynı ekrandaki yevmiye alanını doldur;
 o kişi son kademede genel tutar yerine kendi ücretini alır.
 
-Güne özel **prim** yazılabilir; eksi değer kesinti anlamına gelir.
+### Prim ve avans girişi
+
+İkisi de **çalışanın kendi satırından** giriliyor: ödeme listesinde kişiye
+dokunup satırı aç, “+ Prim” ya da “+ Avans”a bas. Kişi zaten belli olduğu
+için açılır listeden seçmek gerekmiyor, kaydedince satırın toplamı gözünün
+önünde değişiyor ve yeşil bir onay çıkıyor.
+
+Çalışma kaydı olmayan aktif çalışanlar da listede (₺0 olarak) durur — o
+hafta çalışmamış birine de prim/avans yazabilmek için. Ödeme listesine ve
+PDF'e sadece kaydı olanlar girer.
+
+Güne özel **prim** yazılabilir; eksi değer kesinti anlamına gelir. Aynı
+kişiye aynı gün **birden fazla** prim ya da avans yazılabilir; üst üste
+yazmaz, ayrı kayıt olur ve toplanır.
+
+**Sayı yazımı:** Türkçe biçim desteklenir. `1.500`, `1500`, `1.500,50` ve
+`1500,50` girişlerinin hepsi doğru okunur. Anlaşılmayan bir şey yazılırsa
+sessizce 0 kaydedilmez, uyarı çıkar (bkz. `parseAmount`, `src/lib/format.ts`).
 
 ### Ön ödeme (avans)
 
-Çalışan hafta ortasında para isteyip alabiliyor. Bu tutar “Maaş → Ön ödeme
-(avans)” bölümüne yazılır ve o dönemin hakedişinden düşülür:
+Çalışan hafta ortasında para isteyip alabiliyor. Bu tutar çalışanın satırından
+“+ Avans” ile yazılır ve o dönemin hakedişinden düşülür:
 
 ```
 ödenecek = yevmiye + prim − avans
 ```
 
 Avans **verildiği tarihin düştüğü ödeme döneminde** kesilir. Tutar her zaman
-pozitif girilir, hesapta eksi olarak işlenir. Prim'den farklı olarak aynı
-kişiye aynı gün birden fazla avans yazılabilir — üst üste yazmaz, ayrı kayıt
-olur.
+pozitif girilir, hesapta eksi olarak işlenir.
 
 **Bilinen sınır:** avans o haftanın hakedişini aşarsa kişinin tutarı eksiye
 düşer ve bu fark **kendiliğinden gelecek haftaya devretmez**. Ekran bunu

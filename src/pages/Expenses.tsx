@@ -10,7 +10,7 @@ import {
   startOfMonth,
   today,
 } from '../lib/date'
-import { money, parseNumber } from '../lib/format'
+import { money, parseAmount } from '../lib/format'
 import { EXPENSE_SPENDERS, type Expense, type ExpenseSpender } from '../lib/types'
 import {
   Button,
@@ -254,7 +254,11 @@ function NewExpenseCard({
   const [error, setError] = useState<string | null>(null)
 
   async function add() {
-    const value = parseNumber(amount)
+    const value = parseAmount(amount)
+    if (value === null) {
+      setError('Tutarı anlayamadım. Örnek: 1.500 ya da 1500')
+      return
+    }
     if (value <= 0) {
       setError('Tutar sıfırdan büyük olmalı.')
       return

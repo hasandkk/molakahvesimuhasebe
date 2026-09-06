@@ -256,6 +256,10 @@ create trigger payroll_settings_updated_at
 
 -- ---------------------------------------------------------------------
 -- employee_bonuses — güne özel prim. Eksi değer kesinti anlamına gelir.
+--   Aynı kişiye aynı gün birden fazla prim yazılabilir (farklı sebeplerle).
+--   Eskiden (work_date, employee_id) tekildi ve uygulama upsert kullanıyordu;
+--   bu yüzden ikinci prim birincinin ÜZERİNE yazıyordu. Kısıt aşağıda
+--   düşürülüyor, uygulama artık düz insert yapıyor.
 -- ---------------------------------------------------------------------
 create table if not exists public.employee_bonuses (
   id           uuid primary key default gen_random_uuid(),
@@ -264,9 +268,13 @@ create table if not exists public.employee_bonuses (
   amount       numeric(12,2) not null check (amount <> 0),
   note         text,
   created_by   uuid references auth.users(id) default auth.uid(),
-  created_at   timestamptz not null default now(),
-  unique (work_date, employee_id)
+  created_at   timestamptz not null default now()
 );
+
+-- Betiğin önceki sürümünü çalıştırdıysan tekillik kısıtı burada düşürülür.
+alter table public.employee_bonuses
+  drop constraint if exists employee_bonuses_work_date_employee_id_key;
+
 create index if not exists employee_bonuses_date_idx on public.employee_bonuses (work_date);
 create index if not exists employee_bonuses_employee_idx on public.employee_bonuses (employee_id);
 
